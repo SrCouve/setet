@@ -157,8 +157,17 @@ const Game = () => {
         // Carregar cartas já vistas e curtidas do usuário
         const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
         const userData = userDoc.data();
-        const viewedCards = userData?.viewedCards || [];
+        let viewedCards = userData?.viewedCards || [];
         const likedCards = userData?.likedCards || [];
+        
+        // Se todas as cartas já foram vistas, resetar as cartas vistas
+        if (viewedCards.length >= cardsData.length) {
+          viewedCards = [];
+          // Atualizar no Firestore
+          await updateDoc(doc(db, 'users', currentUser.uid), {
+            viewedCards: []
+          });
+        }
         
         setViewedCards(viewedCards);
         setLikedCards(likedCards);
