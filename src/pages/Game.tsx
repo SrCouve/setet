@@ -54,6 +54,8 @@ const Game = () => {
   const [hasNewMatch, setHasNewMatch] = useState(false);
   const [cards, setCards] = useState<CardData[]>([]);
   const [partner, setPartner] = useState<Partner | null>(null);
+  const [viewedCards, setViewedCards] = useState<string[]>([]);
+  const [noMoreCards, setNoMoreCards] = useState(false);
 
   // Carregar cartas do Firebase e resetar o índice
   useEffect(() => {
@@ -88,8 +90,23 @@ const Game = () => {
           id: doc.id,
           ...doc.data()
         })) as CardData[];
-        setCards(cardsData);
-        setCurrentCardIndex(0); // Resetar o índice quando carregar novas cartas
+
+        // Carregar cartas já vistas do usuário
+        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+        const userData = userDoc.data();
+        const viewedCards = userData?.viewedCards || [];
+        setViewedCards(viewedCards);
+
+        // Filtrar cartas já vistas
+        const newCards = cardsData.filter(card => !viewedCards.includes(card.id));
+        setCards(newCards);
+        
+        // Verificar se há cartas novas
+        if (newCards.length === 0) {
+          setNoMoreCards(true);
+        } else {
+          setCurrentCardIndex(0);
+        }
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
       }
@@ -126,6 +143,23 @@ const Game = () => {
       if (direction === 'right' && currentCardIndex < cards.length - 1) {
         const currentCard = cards[currentCardIndex];
         
+        // Adicionar carta às já vistas
+        const newViewedCards = [...viewedCards, currentCard.id];
+        setViewedCards(newViewedCards);
+        
+        // Salvar cartas vistas no Firestore
+        try {
+          const currentUser = auth.currentUser;
+          if (currentUser) {
+            const userDoc = doc(db, 'users', currentUser.uid);
+            await updateDoc(userDoc, {
+              viewedCards: newViewedCards
+            });
+          }
+        } catch (error) {
+          console.error('Erro ao salvar cartas vistas:', error);
+        }
+        
         // Verificar se é um match
         const isNewMatch = isMatch(currentCard.id);
         if (isNewMatch && !matchedCards.includes(currentCard.id)) {
@@ -147,6 +181,11 @@ const Game = () => {
         }
         
         setCurrentCardIndex(currentCardIndex + 1);
+        
+        // Verificar se é a última carta
+        if (currentCardIndex === cards.length - 2) {
+          setNoMoreCards(true);
+        }
       } else if (direction === 'left' && currentCardIndex > 0) {
         setCurrentCardIndex(currentCardIndex - 1);
       }
@@ -199,16 +238,41 @@ const Game = () => {
           color: 'white',
         }}
       >
-        <Typography variant="h4" gutterBottom>
-          Acabaram as cartas!
-        </Typography>
-        <Button
-          variant="outlined"
-          onClick={() => setCurrentCardIndex(0)}
-          sx={{ mt: 2 }}
+        <Paper
+          sx={{
+            p: 4,
+            maxWidth: '400px',
+            width: '100%',
+            background: 'rgba(255, 255, 255, 0.05)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            textAlign: 'center',
+          }}
         >
-          Recomeçar
-        </Button>
+          <Typography variant="h5" sx={{ mb: 2 }}>
+            {noMoreCards ? 'Não há mais cartas novas!' : 'Carregando...'}
+          </Typography>
+          {noMoreCards && (
+            <Typography variant="body1" sx={{ mb: 3, color: 'rgba(255, 255, 255, 0.7)' }}>
+              Todas as cartas disponíveis já foram visualizadas.
+              <br />
+              Aguarde novas cartas serem adicionadas pelo administrador.
+            </Typography>
+          )}
+          <Button
+            variant="contained"
+            onClick={() => navigate('/dashboard')}
+            sx={{
+              background: 'rgba(255, 255, 255, 0.1)',
+              color: 'white',
+              '&:hover': {
+                background: 'rgba(255, 255, 255, 0.2)',
+              },
+            }}
+          >
+            Voltar ao Dashboard
+          </Button>
+        </Paper>
       </Box>
     );
   }
