@@ -159,7 +159,6 @@ const Game = () => {
 
     try {
       const userDoc = doc(db, 'users', currentUser.uid);
-      const userData = (await getDoc(userDoc)).data();
       
       if (highlightedCards.includes(cardId)) {
         setHighlightedCards(highlightedCards.filter(id => id !== cardId));
