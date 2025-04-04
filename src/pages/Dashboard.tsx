@@ -21,7 +21,7 @@ import {
   Alert,
   CircularProgress,
 } from '@mui/material';
-import { ContentCopy as ContentCopyIcon, Check as CheckIcon, Add as AddIcon } from '@mui/icons-material';
+import { ContentCopy as ContentCopyIcon, Check as CheckIcon, Add as AddIcon, Close as CloseIcon } from '@mui/icons-material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { motion } from 'framer-motion';
 import { auth, db } from '../firebase';
@@ -35,6 +35,8 @@ interface Partner {
   online: boolean;
   code: string;
   partnerId: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  requestedBy: string;
 }
 
 const Dashboard = () => {
@@ -229,13 +231,13 @@ const Dashboard = () => {
       const partnerDoc = querySnapshot.docs[0];
       const partnerId = partnerDoc.id;
 
-      // Verificar se já existe uma conexão bidirecional
+      // Criar solicitação de parceria
       const myPartnersRef = collection(db, 'users', currentUser.uid, 'partners');
       const partnerPartnersRef = collection(db, 'users', partnerId, 'partners');
 
       const batch = writeBatch(db);
 
-      // Adicionar parceiro para o usuário atual
+      // Adicionar solicitação para o usuário atual
       const newPartnerRef = doc(myPartnersRef);
       batch.set(newPartnerRef, {
         name: newPartnerName,
@@ -243,10 +245,12 @@ const Dashboard = () => {
         online: false,
         code: newPartnerCode,
         partnerId: partnerId,
+        status: 'pending' as const,
+        requestedBy: currentUser.uid,
         createdAt: serverTimestamp(),
       });
 
-      // Adicionar usuário atual como parceiro do outro usuário
+      // Adicionar solicitação para o parceiro
       const reversePartnerRef = doc(partnerPartnersRef);
       batch.set(reversePartnerRef, {
         name: currentUser.displayName || 'Usuário',
@@ -254,19 +258,23 @@ const Dashboard = () => {
         online: true,
         code: userCode,
         partnerId: currentUser.uid,
+        status: 'pending' as const,
+        requestedBy: currentUser.uid,
         createdAt: serverTimestamp(),
       });
 
       await batch.commit();
 
       // Atualizar estado local
-      const newPartner = {
+      const newPartner: Partner = {
         id: newPartnerRef.id,
         name: newPartnerName,
         avatar: '👤',
         online: false,
         code: newPartnerCode,
         partnerId: partnerId,
+        status: 'pending' as const,
+        requestedBy: currentUser.uid,
       };
 
       setPartners(prev => [...prev, newPartner]);
@@ -275,7 +283,7 @@ const Dashboard = () => {
       setNewPartnerCode('');
       setSnackbar({
         open: true,
-        message: 'Parceiro adicionado com sucesso!',
+        message: 'Solicitação de parceria enviada!',
         severity: 'success',
       });
     } catch (error) {
@@ -288,262 +296,329 @@ const Dashboard = () => {
     }
   };
 
+  const handleAcceptPartner = async (partnerId: string) => {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+
+      const partnerRef = doc(db, 'users', currentUser.uid, 'partners', partnerId);
+      const myRef = doc(db, 'users', partnerId, 'partners', currentUser.uid);
+
+      const batch = writeBatch(db);
+      batch.update(partnerRef, { status: 'accepted' });
+      batch.update(myRef, { status: 'accepted' });
+      await batch.commit();
+
+      setPartners(prev =>
+        prev.map(p =>
+          p.id === partnerId ? { ...p, status: 'accepted' } : p
+        )
+      );
+
+      setSnackbar({
+        open: true,
+        message: 'Parceria aceita com sucesso!',
+        severity: 'success',
+      });
+    } catch (error) {
+      console.error('Erro ao aceitar parceiro:', error);
+      setSnackbar({
+        open: true,
+        message: 'Erro ao aceitar parceiro. Tente novamente.',
+        severity: 'error',
+      });
+    }
+  };
+
+  const handleRejectPartner = async (partnerId: string) => {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+
+      const partnerRef = doc(db, 'users', currentUser.uid, 'partners', partnerId);
+      const myRef = doc(db, 'users', partnerId, 'partners', currentUser.uid);
+
+      const batch = writeBatch(db);
+      batch.delete(partnerRef);
+      batch.delete(myRef);
+      await batch.commit();
+
+      setPartners(prev => prev.filter(p => p.id !== partnerId));
+
+      setSnackbar({
+        open: true,
+        message: 'Solicitação rejeitada',
+        severity: 'info',
+      });
+    } catch (error) {
+      console.error('Erro ao rejeitar parceiro:', error);
+      setSnackbar({
+        open: true,
+        message: 'Erro ao rejeitar parceiro. Tente novamente.',
+        severity: 'error',
+      });
+    }
+  };
+
   return (
     <Box
       sx={{
         minHeight: '100vh',
-        background: 'linear-gradient(135deg, #000000 0%, #1a1a1a 100%)',
+        height: '100%',
+        background: '#000000',
         display: 'flex',
         flexDirection: 'column',
+        p: { xs: 2, sm: 3 },
         gap: 3,
-        p: { xs: 2, sm: 4 },
-        position: 'relative',
-        overflow: 'hidden',
       }}
     >
-      {/* Background Elements */}
-      <Box
-        sx={{
-          position: 'absolute',
-          top: '10%',
-          left: '5%',
-          width: '40vh',
-          height: '40vh',
-          background: 'radial-gradient(circle, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 70%)',
-          borderRadius: '50%',
-          filter: 'blur(40px)',
-          zIndex: 0,
-        }}
-      />
-      <Box
-        sx={{
-          position: 'absolute',
-          bottom: '20%',
-          right: '10%',
-          width: '30vh',
-          height: '30vh',
-          background: 'radial-gradient(circle, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0) 70%)',
-          borderRadius: '50%',
-          filter: 'blur(40px)',
-          zIndex: 0,
-        }}
-      />
+      {/* Header with Logout */}
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <IconButton
+          onClick={handleLogout}
+          sx={{
+            color: 'white',
+            bgcolor: 'rgba(255, 255, 255, 0.1)',
+            '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.2)' },
+          }}
+        >
+          <LogoutIcon />
+        </IconButton>
+      </Box>
 
-      {/* Content Container */}
-      <Box sx={{ position: 'relative', zIndex: 1 }}>
-        {/* Header with Logout */}
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 4 }}>
-          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-            <IconButton
-              onClick={handleLogout}
+      {/* Code Display */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <Paper
+          elevation={0}
+          sx={{
+            background: 'rgba(0, 0, 0, 0.6)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            p: { xs: 3, sm: 4 },
+            borderRadius: 2,
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          <Typography 
+            variant="h6"
+            sx={{ 
+              color: 'rgba(255, 255, 255, 0.7)',
+              fontWeight: 500,
+              mb: 2,
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+              fontSize: '0.9rem',
+            }}
+          >
+            Seu Código
+          </Typography>
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 2,
+          }}>
+            <Typography
+              variant="h2"
               sx={{
-                color: 'white',
-                background: 'rgba(255, 255, 255, 0.1)',
-                backdropFilter: 'blur(10px)',
+                fontFamily: 'monospace',
+                fontWeight: 700,
+                color: '#ff4444',
+                letterSpacing: '0.2em',
+                fontSize: { xs: '2rem', sm: '3rem' },
+                textShadow: '0 0 20px rgba(255, 68, 68, 0.3)',
+              }}
+            >
+              {userCode}
+            </Typography>
+            <IconButton
+              onClick={handleCopy}
+              sx={{
+                color: copied ? '#4CAF50' : '#ff4444',
+                bgcolor: 'rgba(0, 0, 0, 0.3)',
+                backdropFilter: 'blur(5px)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                transition: 'all 0.3s ease',
                 '&:hover': {
-                  background: 'rgba(255, 255, 255, 0.15)',
+                  bgcolor: 'rgba(0, 0, 0, 0.5)',
+                  transform: 'scale(1.1)',
+                },
+                '&:active': {
+                  transform: 'scale(0.95)',
                 },
               }}
             >
-              <LogoutIcon />
+              {copied ? <CheckIcon /> : <ContentCopyIcon />}
             </IconButton>
-          </motion.div>
+          </Box>
+        </Paper>
+      </motion.div>
+
+      {/* Partners Section */}
+      <Paper
+        elevation={0}
+        sx={{
+          background: 'rgba(0, 0, 0, 0.6)',
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          p: 0,
+          borderRadius: 2,
+          flex: 1,
+          overflow: 'hidden',
+          position: 'relative',
+        }}
+      >
+        <Box sx={{ p: { xs: 2, sm: 3 }, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography
+            variant="h6"
+            sx={{
+              color: 'rgba(255, 255, 255, 0.7)',
+              fontWeight: 500,
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+              fontSize: '0.9rem',
+            }}
+          >
+            Parceiros
+          </Typography>
+          <IconButton
+            onClick={() => setOpenDialog(true)}
+            sx={{
+              color: '#ff4444',
+              bgcolor: 'rgba(0, 0, 0, 0.3)',
+              '&:hover': {
+                bgcolor: 'rgba(0, 0, 0, 0.5)',
+                transform: 'scale(1.1)',
+              },
+            }}
+          >
+            <AddIcon />
+          </IconButton>
         </Box>
 
-        {/* Code Display */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <Paper
-            elevation={0}
-            sx={{
-              background: 'rgba(0, 0, 0, 0.6)',
-              backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              p: { xs: 3, sm: 4 },
-              borderRadius: 2,
-              position: 'relative',
-              overflow: 'hidden',
-            }}
-          >
-            <Typography 
-              variant="h6"
-              sx={{ 
-                color: 'rgba(255, 255, 255, 0.7)',
-                fontWeight: 500,
-                mb: 2,
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em',
-                fontSize: '0.9rem',
-              }}
-            >
-              Seu Código
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+            <CircularProgress sx={{ color: '#ff4444' }} />
+          </Box>
+        ) : partners.length === 0 ? (
+          <Box sx={{ p: 3, textAlign: 'center' }}>
+            <Typography sx={{ color: 'rgba(255, 255, 255, 0.5)' }}>
+              Você ainda não tem parceiros. Adicione um parceiro usando seu código!
             </Typography>
-            <Box sx={{ 
-              display: 'flex', 
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 2,
-            }}>
-              <Typography
-                variant="h2"
+          </Box>
+        ) : (
+          <List sx={{ p: 0 }}>
+            {partners.map((partner) => (
+              <ListItem
+                key={partner.id}
                 sx={{
-                  fontFamily: 'monospace',
-                  fontWeight: 700,
-                  color: '#ff4444',
-                  letterSpacing: '0.2em',
-                  fontSize: { xs: '2rem', sm: '3rem' },
-                  textShadow: '0 0 20px rgba(255, 68, 68, 0.3)',
-                }}
-              >
-                {userCode}
-              </Typography>
-              <IconButton
-                onClick={handleCopy}
-                sx={{
-                  color: copied ? '#4CAF50' : '#ff4444',
-                  bgcolor: 'rgba(0, 0, 0, 0.3)',
-                  backdropFilter: 'blur(5px)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
                   transition: 'all 0.3s ease',
                   '&:hover': {
-                    bgcolor: 'rgba(0, 0, 0, 0.5)',
-                    transform: 'scale(1.1)',
-                  },
-                  '&:active': {
-                    transform: 'scale(0.95)',
+                    bgcolor: 'rgba(255, 255, 255, 0.05)',
                   },
                 }}
               >
-                {copied ? <CheckIcon /> : <ContentCopyIcon />}
-              </IconButton>
-            </Box>
-          </Paper>
-        </motion.div>
-
-        {/* Partners Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <Paper
-            elevation={0}
-            sx={{
-              background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%)',
-              backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              p: { xs: 3, sm: 4 },
-              mt: 4,
-              borderRadius: 4,
-            }}
-          >
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-              <Typography 
-                variant="h6"
-                sx={{ 
-                  color: 'rgba(255, 255, 255, 0.7)',
-                  fontWeight: 500,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.1em',
-                  fontSize: '0.9rem',
-                }}
-              >
-                Parceiros
-              </Typography>
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <IconButton
-                  onClick={() => setOpenDialog(true)}
-                  sx={{
-                    color: 'white',
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    '&:hover': {
-                      background: 'rgba(255, 255, 255, 0.15)',
-                    },
-                  }}
-                >
-                  <AddIcon />
-                </IconButton>
-              </motion.div>
-            </Box>
-
-            {loading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-                <CircularProgress />
-              </Box>
-            ) : partners.length === 0 ? (
-              <Box sx={{ textAlign: 'center', p: 4 }}>
-                <Typography sx={{ color: 'rgba(255, 255, 255, 0.5)' }}>
-                  Você ainda não tem parceiros. Adicione um parceiro usando seu código!
-                </Typography>
-              </Box>
-            ) : (
-              <List sx={{ width: '100%', bgcolor: 'transparent' }}>
-                {partners.map((partner) => (
-                  <Paper
-                    key={partner.id}
-                    elevation={2}
+                <ListItemAvatar>
+                  <Avatar
                     sx={{
-                      mb: 2,
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      backdropFilter: 'blur(10px)',
-                      borderRadius: 2,
-                      overflow: 'hidden',
-                      transition: 'all 0.3s ease',
-                      '&:hover': {
-                        transform: 'translateY(-2px)',
-                        boxShadow: '0 8px 16px rgba(0, 0, 0, 0.2)',
-                      }
+                      bgcolor: partner.online ? '#4CAF50' : 'rgba(255, 255, 255, 0.2)',
+                      fontSize: '1.2rem',
                     }}
                   >
-                    <ListItem
-                      secondaryAction={
-                        <Chip
-                          label={partner.code}
-                          sx={{
-                            bgcolor: 'rgba(255, 68, 68, 0.2)',
-                            color: '#ff4444',
-                            border: '1px solid rgba(255, 68, 68, 0.3)',
-                            fontFamily: 'monospace',
-                            fontWeight: 'bold',
-                          }}
-                        />
-                      }
-                    >
-                      <ListItemAvatar>
-                        <Avatar
-                          sx={{
-                            bgcolor: partner.online ? '#4CAF50' : '#ff4444',
-                            fontSize: '1.5rem',
-                          }}
-                        >
-                          {partner.avatar}
-                        </Avatar>
-                      </ListItemAvatar>
-                      <ListItemText
-                        primary={
-                          <Typography variant="h6" sx={{ color: 'white' }}>
-                            {partner.name}
-                          </Typography>
-                        }
-                        secondary={
-                          <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-                            {partner.online ? 'Online' : 'Offline'}
-                          </Typography>
-                        }
+                    {partner.avatar}
+                  </Avatar>
+                </ListItemAvatar>
+                <ListItemText
+                  primary={
+                    <Typography sx={{ color: 'white', fontWeight: 500 }}>
+                      {partner.name}
+                    </Typography>
+                  }
+                  secondary={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                      <Chip
+                        label={partner.code}
+                        size="small"
+                        sx={{
+                          bgcolor: 'rgba(255, 68, 68, 0.2)',
+                          color: '#ff4444',
+                          fontFamily: 'monospace',
+                        }}
                       />
-                    </ListItem>
-                  </Paper>
-                ))}
-              </List>
-            )}
-          </Paper>
-        </motion.div>
-      </Box>
+                      <Chip
+                        label={partner.status === 'pending' ? 'Pendente' : partner.status === 'accepted' ? 'Aceito' : 'Rejeitado'}
+                        size="small"
+                        sx={{
+                          bgcolor: partner.status === 'accepted' 
+                            ? 'rgba(76, 175, 80, 0.2)' 
+                            : partner.status === 'pending' 
+                              ? 'rgba(255, 152, 0, 0.2)' 
+                              : 'rgba(244, 67, 54, 0.2)',
+                          color: partner.status === 'accepted' 
+                            ? '#4CAF50' 
+                            : partner.status === 'pending' 
+                              ? '#FF9800' 
+                              : '#F44336',
+                        }}
+                      />
+                    </Box>
+                  }
+                />
+                {partner.status === 'pending' && partner.requestedBy !== auth.currentUser?.uid && (
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <IconButton
+                      onClick={() => handleAcceptPartner(partner.id)}
+                      sx={{
+                        color: '#4CAF50',
+                        bgcolor: 'rgba(76, 175, 80, 0.1)',
+                        '&:hover': {
+                          bgcolor: 'rgba(76, 175, 80, 0.2)',
+                        },
+                      }}
+                    >
+                      <CheckIcon />
+                    </IconButton>
+                    <IconButton
+                      onClick={() => handleRejectPartner(partner.id)}
+                      sx={{
+                        color: '#F44336',
+                        bgcolor: 'rgba(244, 67, 54, 0.1)',
+                        '&:hover': {
+                          bgcolor: 'rgba(244, 67, 54, 0.2)',
+                        },
+                      }}
+                    >
+                      <CloseIcon />
+                    </IconButton>
+                  </Box>
+                )}
+                {partner.status === 'accepted' && (
+                  <Button
+                    variant="contained"
+                    onClick={() => navigate(`/game/${partner.partnerId}`)}
+                    sx={{
+                      bgcolor: '#ff4444',
+                      '&:hover': {
+                        bgcolor: '#ff6666',
+                      },
+                    }}
+                  >
+                    Jogar
+                  </Button>
+                )}
+              </ListItem>
+            ))}
+          </List>
+        )}
+      </Paper>
 
-      {/* Dialog para adicionar parceiro */}
+      {/* Add Partner Dialog */}
       <Dialog
         open={openDialog}
         onClose={() => setOpenDialog(false)}
@@ -551,12 +626,12 @@ const Dashboard = () => {
           sx: {
             bgcolor: '#1a1a1a',
             color: 'white',
-            minWidth: '400px',
-          }
+            minWidth: { xs: '90%', sm: 400 },
+          },
         }}
       >
         <DialogTitle sx={{ borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
-          Adicionar Novo Parceiro
+          Adicionar Parceiro
         </DialogTitle>
         <DialogContent sx={{ mt: 2 }}>
           <TextField
@@ -570,10 +645,10 @@ const Dashboard = () => {
               '& .MuiOutlinedInput-root': {
                 color: 'white',
                 '& fieldset': {
-                  borderColor: 'rgba(255, 255, 255, 0.3)',
+                  borderColor: 'rgba(255, 255, 255, 0.23)',
                 },
                 '&:hover fieldset': {
-                  borderColor: '#ff4444',
+                  borderColor: 'rgba(255, 255, 255, 0.4)',
                 },
                 '&.Mui-focused fieldset': {
                   borderColor: '#ff4444',
@@ -598,10 +673,10 @@ const Dashboard = () => {
               '& .MuiOutlinedInput-root': {
                 color: 'white',
                 '& fieldset': {
-                  borderColor: 'rgba(255, 255, 255, 0.3)',
+                  borderColor: 'rgba(255, 255, 255, 0.23)',
                 },
                 '&:hover fieldset': {
-                  borderColor: '#ff4444',
+                  borderColor: 'rgba(255, 255, 255, 0.4)',
                 },
                 '&.Mui-focused fieldset': {
                   borderColor: '#ff4444',
@@ -629,8 +704,8 @@ const Dashboard = () => {
             sx={{
               bgcolor: '#ff4444',
               '&:hover': {
-                bgcolor: '#ff6b6b',
-              }
+                bgcolor: '#ff6666',
+              },
             }}
           >
             Adicionar
@@ -638,7 +713,7 @@ const Dashboard = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar para mensagens */}
+      {/* Snackbar for notifications */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}

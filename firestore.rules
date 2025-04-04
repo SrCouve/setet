@@ -1,4 +1,5 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{userId} {
@@ -9,10 +10,7 @@ service cloud.firestore {
                  resource.data.code != null;
       
       match /partners/{partnerId} {
-        allow read, write: if request.auth != null && (
-          request.auth.uid == userId ||
-          exists(/databases/$(database)/documents/users/$(userId)/partners/$(request.auth.uid))
-        );
+        allow read, write: if request.auth != null && request.auth.uid == userId;
       }
     }
   }
