@@ -1,0 +1,32 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Função para verificar se o usuário está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Função para verificar se o usuário está acessando seus próprios arquivos
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Regras para imagens de perfil
+    match /avatars/{userId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
+    }
+    
+    // Regras para imagens de cartas
+    match /cards/{cardId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Apenas administradores podem modificar imagens de cartas
+    }
+    
+    // Regras para outros arquivos
+    match /{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Restringe a escrita para todos os outros arquivos
+    }
+  }
+} 
