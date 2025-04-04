@@ -29,7 +29,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import LocalFireDepartmentIcon from '@mui/icons-material/LocalFireDepartment';
-import { collection, getDocs, doc, getDoc, updateDoc, arrayUnion, arrayRemove, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, updateDoc, arrayUnion, arrayRemove, onSnapshot, setDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 
 interface CardData {
@@ -47,6 +47,7 @@ interface Partner {
   avatar: string;
   online: boolean;
   likedCards: string[];
+  fireCards: string[];
 }
 
 const Game = () => {
@@ -60,6 +61,7 @@ const Game = () => {
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [viewedCards, setViewedCards] = useState<string[]>([]);
   const [likedCards, setLikedCards] = useState<string[]>([]);
+  const [fireCards, setFireCards] = useState<string[]>([]);
   const [matchedCards, setMatchedCards] = useState<string[]>([]);
   const [partner, setPartner] = useState<Partner | null>(null);
   const [showMatches, setShowMatches] = useState(false);
@@ -95,6 +97,34 @@ const Game = () => {
           return;
         }
 
+        // Verificar se é uma nova solicitação
+        const matchDoc = await getDoc(doc(db, 'matches', `${currentUser.uid}_${partnerId}`));
+        const matchData = matchDoc.data();
+        
+        // Se for uma nova solicitação ou não houver dados de match, resetar o estado
+        if (!matchData || !matchData.lastPlayed) {
+          // Resetar todos os estados
+          setViewedCards([]);
+          setLikedCards([]);
+          setFireCards([]);
+          setMatchedCards([]);
+          
+          // Atualizar o documento de match
+          await setDoc(doc(db, 'matches', `${currentUser.uid}_${partnerId}`), {
+            lastPlayed: new Date().toISOString(),
+            viewedCards: [],
+            likedCards: [],
+            fireCards: [],
+            matchedCards: []
+          });
+        } else {
+          // Carregar estados salvos
+          setViewedCards(matchData.viewedCards || []);
+          setLikedCards(matchData.likedCards || []);
+          setFireCards(matchData.fireCards || []);
+          setMatchedCards(matchData.matchedCards || []);
+        }
+
         // Carregar informações do parceiro
         const partnerDoc = await getDoc(doc(db, 'users', partnerId));
         if (!partnerDoc.exists()) {
@@ -109,6 +139,7 @@ const Game = () => {
           avatar: partnerData.avatar || '👤',
           online: true,
           likedCards: partnerData.likedCards || [],
+          fireCards: partnerData.fireCards || [],
         });
 
         // Carregar cartas
@@ -124,23 +155,11 @@ const Game = () => {
           return;
         }
 
-        // Carregar cartas já vistas e curtidas do usuário
-        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-        const userData = userDoc.data();
-        const viewedCards = userData?.viewedCards || [];
-        const likedCards = userData?.likedCards || [];
-        
-        setViewedCards(viewedCards);
-        setLikedCards(likedCards);
-
         // Filtrar cartas já vistas
         const newCards = cardsData.filter(card => !viewedCards.includes(card.id));
         setCards(newCards);
         
-        // Verificar se há cartas novas
-        if (newCards.length === 0) {
-          // Não há mais cartas novas
-        } else {
+        if (newCards.length > 0) {
           setCurrentCardIndex(0);
         }
         
@@ -154,21 +173,20 @@ const Game = () => {
           setMatchedCards(initialMatches.map(card => card.id));
         }
 
-        // Configurar listener em tempo real para as cartas que o parceiro curtiu
+        // Configurar listener para curtidas do parceiro
         const unsubscribe = onSnapshot(doc(db, 'users', partnerId), (doc) => {
-          if (doc.exists()) {
-            const data = doc.data();
-            const partnerLikedCards = data.likedCards || [];
+          const data = doc.data();
+          if (data) {
+            setPartner(prev => prev ? {
+              ...prev,
+              likedCards: data.likedCards || [],
+              fireCards: data.fireCards || [],
+            } : null);
             
-            setPartner(prev => ({
-              ...prev!,
-              likedCards: partnerLikedCards,
-            }));
-            
-            // Verificar se há novos matches
+            // Verificar novos matches
             const newMatches = cardsData.filter(card => 
-              partnerLikedCards.includes(card.id) && 
-              likedCards.includes(card.id) && 
+              data.likedCards?.includes(card.id) && 
+              likedCards.includes(card.id) &&
               !matchedCards.includes(card.id)
             );
             
@@ -183,10 +201,8 @@ const Game = () => {
             }
           }
         });
-        
-        return () => {
-          unsubscribe();
-        };
+
+        return () => unsubscribe();
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
         setError('Ocorreu um erro ao carregar os dados. Tente novamente mais tarde.');
@@ -212,8 +228,8 @@ const Game = () => {
     try {
       const currentUser = auth.currentUser;
       if (currentUser) {
-        const userDoc = doc(db, 'users', currentUser.uid);
-        await updateDoc(userDoc, {
+        const matchDoc = doc(db, 'matches', `${currentUser.uid}_${partnerId}`);
+        await updateDoc(matchDoc, {
           viewedCards: newViewedCards
         });
       }
@@ -230,8 +246,8 @@ const Game = () => {
       try {
         const currentUser = auth.currentUser;
         if (currentUser) {
-          const userDoc = doc(db, 'users', currentUser.uid);
-          await updateDoc(userDoc, {
+          const matchDoc = doc(db, 'matches', `${currentUser.uid}_${partnerId}`);
+          await updateDoc(matchDoc, {
             likedCards: arrayUnion(currentCard.id)
           });
         }
@@ -322,6 +338,26 @@ const Game = () => {
       partner?.likedCards.includes(card.id) && 
       likedCards.includes(card.id)
     );
+  };
+
+  const handleToggleFire = async (cardId: string) => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    const newFireCards = fireCards.includes(cardId)
+      ? fireCards.filter(id => id !== cardId)
+      : [...fireCards, cardId];
+    
+    setFireCards(newFireCards);
+
+    try {
+      const matchDoc = doc(db, 'matches', `${currentUser.uid}_${partnerId}`);
+      await updateDoc(matchDoc, {
+        fireCards: newFireCards
+      });
+    } catch (error) {
+      console.error('Erro ao salvar foguinho:', error);
+    }
   };
 
   const currentCard = cards[currentCardIndex];
@@ -546,15 +582,20 @@ const Game = () => {
                       <Typography variant="h6" sx={{ color: 'white', fontSize: '1rem', mb: 1 }}>
                         {card.title}
                       </Typography>
-                      <Chip
-                        label={card.category}
-                        size="small"
-                        sx={{
-                          background: 'rgba(255, 255, 255, 0.1)',
-                          color: 'white',
-                          fontSize: '0.7rem',
-                        }}
-                      />
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                        <Chip
+                          label={card.category}
+                          size="small"
+                          sx={{
+                            background: 'rgba(255, 255, 255, 0.1)',
+                            color: 'white',
+                            fontSize: '0.7rem',
+                          }}
+                        />
+                        {(fireCards.includes(card.id) || partner?.fireCards?.includes(card.id)) && (
+                          <LocalFireDepartmentIcon sx={{ color: '#ff4444', fontSize: '1.2rem' }} />
+                        )}
+                      </Box>
                     </CardContent>
                   </Card>
                 ))
@@ -778,15 +819,20 @@ const Game = () => {
                     <Typography variant="h6" sx={{ color: 'white', fontSize: '1rem', mb: 1 }}>
                       {card.title}
                     </Typography>
-                    <Chip
-                      label={card.category}
-                      size="small"
-                      sx={{
-                        background: 'rgba(255, 255, 255, 0.1)',
-                        color: 'white',
-                        fontSize: '0.7rem',
-                      }}
-                    />
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <Chip
+                        label={card.category}
+                        size="small"
+                        sx={{
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          color: 'white',
+                          fontSize: '0.7rem',
+                        }}
+                      />
+                      {(fireCards.includes(card.id) || partner?.fireCards?.includes(card.id)) && (
+                        <LocalFireDepartmentIcon sx={{ color: '#ff4444', fontSize: '1.2rem' }} />
+                      )}
+                    </Box>
                   </CardContent>
                 </Card>
               ))
@@ -868,25 +914,35 @@ const Game = () => {
                     color: 'white',
                   }}
                 />
-                <IconButton
-                  onClick={() => {
-                    toggleHighlight(selectedCard.id);
-                    setSelectedCard(null);
-                  }}
+                <Box
                   sx={{
                     position: 'absolute',
                     top: 16,
                     right: 16,
-                    color: likedCards.includes(selectedCard.id) ? '#ff4444' : 'rgba(255, 255, 255, 0.5)',
-                    background: 'rgba(0, 0, 0, 0.3)',
-                    backdropFilter: 'blur(4px)',
-                    '&:hover': {
-                      background: 'rgba(0, 0, 0, 0.4)',
-                    },
+                    zIndex: 2,
+                    display: 'flex',
+                    gap: 1,
                   }}
                 >
-                  <LocalFireDepartmentIcon />
-                </IconButton>
+                  <Tooltip title={fireCards.includes(selectedCard.id) ? "Remover Foguinho" : "Adicionar Foguinho"}>
+                    <IconButton
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleFire(selectedCard.id);
+                      }}
+                      sx={{
+                        color: fireCards.includes(selectedCard.id) ? '#ff4444' : 'white',
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        backdropFilter: 'blur(10px)',
+                        '&:hover': {
+                          background: 'rgba(0, 0, 0, 0.7)',
+                        },
+                      }}
+                    >
+                      <LocalFireDepartmentIcon />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
               </motion.div>
             )}
           </Box>
@@ -958,23 +1014,35 @@ const Game = () => {
                     image={currentCard.image}
                     alt={currentCard.title}
                   />
-                  <IconButton
-                    onClick={() => toggleHighlight(currentCard.id)}
+                  <Box
                     sx={{
                       position: 'absolute',
-                      top: 8,
-                      right: 8,
-                      color: likedCards.includes(currentCard.id) ? '#ff4444' : 'rgba(255, 255, 255, 0.5)',
-                      background: 'rgba(0, 0, 0, 0.3)',
-                      backdropFilter: 'blur(4px)',
-                      '&:hover': {
-                        background: 'rgba(0, 0, 0, 0.4)',
-                      },
+                      top: 16,
+                      right: 16,
                       zIndex: 2,
+                      display: 'flex',
+                      gap: 1,
                     }}
                   >
-                    <LocalFireDepartmentIcon />
-                  </IconButton>
+                    <Tooltip title={fireCards.includes(currentCard.id) ? "Remover Foguinho" : "Adicionar Foguinho"}>
+                      <IconButton
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleFire(currentCard.id);
+                        }}
+                        sx={{
+                          color: fireCards.includes(currentCard.id) ? '#ff4444' : 'white',
+                          background: 'rgba(0, 0, 0, 0.5)',
+                          backdropFilter: 'blur(10px)',
+                          '&:hover': {
+                            background: 'rgba(0, 0, 0, 0.7)',
+                          },
+                        }}
+                      >
+                        <LocalFireDepartmentIcon />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
                 </Box>
                 <CardContent sx={{ flexGrow: 1, p: 3 }}>
                   <Typography variant="h5" sx={{ color: 'white', mb: 1 }}>
