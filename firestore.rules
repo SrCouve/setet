@@ -27,6 +27,11 @@ service cloud.firestore {
         
         // Usuários normais podem ler e escrever apenas em seus próprios parceiros
         allow read, write: if request.auth != null && request.auth.uid == userId;
+        
+        // Permitir que um usuário crie documentos na coleção de parceiros de outro usuário
+        // quando estiver enviando uma solicitação de parceria
+        allow create: if request.auth != null && 
+                     request.resource.data.requestedBy == request.auth.uid;
       }
     }
 
