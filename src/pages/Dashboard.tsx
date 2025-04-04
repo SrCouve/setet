@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -54,47 +54,9 @@ const Dashboard = () => {
     severity: 'info',
   });
   const [copied, setCopied] = useState(false);
-  const [partnerCode, setPartnerCode] = useState('');
   const [openDialog, setOpenDialog] = useState(false);
   const [newPartnerName, setNewPartnerName] = useState('');
   const [newPartnerCode, setNewPartnerCode] = useState('');
-  const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [showAdminPanel, setShowAdminPanel] = useState(false);
-  const [adminPassword, setAdminPassword] = useState('');
-  const [adminError, setAdminError] = useState('');
-  const [adminCards, setAdminCards] = useState<any[]>([]);
-  const [openCardDialog, setOpenCardDialog] = useState(false);
-  const [editingCard, setEditingCard] = useState<any>(null);
-  const [cardForm, setCardForm] = useState({
-    title: '',
-    description: '',
-    category: '',
-    image: '',
-  });
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [adminSnackbar, setAdminSnackbar] = useState<{
-    open: boolean;
-    message: string;
-    severity: 'success' | 'error';
-  }>({
-    open: false,
-    message: '',
-    severity: 'success',
-  });
-
-  // Gerar código aleatório
-  const generateCode = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    const prefix = 'SEX';
-    let code = prefix;
-    for (let i = 0; i < 4; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return code;
-  };
 
   // Carregar parceiros do Firestore
   useEffect(() => {
@@ -190,155 +152,6 @@ const Dashboard = () => {
       navigate('/login');
     } catch (error) {
       console.error('Erro ao fazer logout:', error);
-    }
-  };
-
-  const handleAddPartner = async () => {
-    try {
-      if (!newPartnerName || !newPartnerCode) {
-        setSnackbar({
-          open: true,
-          message: 'Preencha todos os campos',
-          severity: 'error',
-        });
-        return;
-      }
-
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
-        setSnackbar({
-          open: true,
-          message: 'Usuário não autenticado',
-          severity: 'error',
-        });
-        return;
-      }
-
-      // Verificar se está tentando adicionar o próprio código
-      if (newPartnerCode === userCode) {
-        setSnackbar({
-          open: true,
-          message: 'Você não pode adicionar seu próprio código',
-          severity: 'error',
-        });
-        return;
-      }
-
-      // Verificar se o parceiro já existe
-      const existingPartner = partners.find(p => p.code === newPartnerCode);
-      if (existingPartner) {
-        if (existingPartner.status === 'rejected') {
-          setSnackbar({
-            open: true,
-            message: 'Este usuário rejeitou sua solicitação anteriormente',
-            severity: 'error',
-          });
-        } else if (existingPartner.status === 'pending') {
-          setSnackbar({
-            open: true,
-            message: 'Você já enviou uma solicitação para este usuário',
-            severity: 'info',
-          });
-        } else {
-          setSnackbar({
-            open: true,
-            message: 'Este parceiro já foi adicionado',
-            severity: 'error',
-          });
-        }
-        return;
-      }
-
-      // Buscar o usuário pelo código
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('code', '==', newPartnerCode));
-      const querySnapshot = await getDocs(q);
-
-      if (querySnapshot.empty) {
-        setSnackbar({
-          open: true,
-          message: 'Código de parceiro não encontrado',
-          severity: 'error',
-        });
-        return;
-      }
-
-      const partnerDoc = querySnapshot.docs[0];
-      const partnerId = partnerDoc.id;
-
-      // Verificar se já existe uma solicitação anterior rejeitada
-      const partnerPartnersRef = collection(db, 'users', partnerId, 'partners');
-      const existingRequestQuery = query(partnerPartnersRef, where('partnerId', '==', currentUser.uid));
-      const existingRequestSnapshot = await getDocs(existingRequestQuery);
-
-      if (!existingRequestSnapshot.empty) {
-        const existingRequest = existingRequestSnapshot.docs[0].data();
-        if (existingRequest.status === 'rejected') {
-          setSnackbar({
-            open: true,
-            message: 'Este usuário rejeitou sua solicitação anteriormente',
-            severity: 'error',
-          });
-          return;
-        }
-      }
-
-      // Criar solicitação de parceria
-      const myPartnersRef = collection(db, 'users', currentUser.uid, 'partners');
-
-      try {
-        // Adicionar solicitação para o usuário atual
-        const newPartnerRef = doc(myPartnersRef);
-        await setDoc(newPartnerRef, {
-          name: newPartnerName,
-          avatar: '👤',
-          online: false,
-          code: newPartnerCode,
-          partnerId: partnerId,
-          status: 'pending' as const,
-          requestedBy: currentUser.uid,
-          createdAt: serverTimestamp(),
-        });
-
-        // Adicionar solicitação para o parceiro
-        const reversePartnerRef = doc(partnerPartnersRef);
-        await setDoc(reversePartnerRef, {
-          name: currentUser.displayName || 'Usuário',
-          avatar: '👤',
-          online: true,
-          code: userCode,
-          partnerId: currentUser.uid,
-          status: 'pending' as const,
-          requestedBy: currentUser.uid,
-          createdAt: serverTimestamp(),
-        });
-
-        // Recarregar parceiros ao invés de atualizar o estado local
-        await reloadPartners();
-
-        setOpenDialog(false);
-        setNewPartnerName('');
-        setNewPartnerCode('');
-        setSnackbar({
-          open: true,
-          message: 'Solicitação de parceria enviada!',
-          severity: 'success',
-        });
-      } catch (error) {
-        console.error('Erro ao adicionar parceiro:', error);
-        setSnackbar({
-          open: true,
-          message: 'Erro ao adicionar parceiro. Tente novamente mais tarde.',
-          severity: 'error',
-        });
-      }
-    } catch (error) {
-      console.error('Erro ao adicionar parceiro:', error);
-      setSnackbar({
-        open: true,
-        message: 'Erro ao adicionar parceiro. Tente novamente mais tarde.',
-        severity: 'error',
-      });
     }
   };
 
