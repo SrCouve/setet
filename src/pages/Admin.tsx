@@ -29,8 +29,7 @@ import AddIcon from '@mui/icons-material/Add';
 import ImageIcon from '@mui/icons-material/Image';
 import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, setDoc, writeBatch } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../firebase';
+import { db } from '../firebase';
 
 interface CardData {
   id: string;
@@ -371,21 +370,19 @@ const Admin = () => {
 
     try {
       setUploading(true);
-      const storageRef = ref(storage, `card-images/${Date.now()}_${file.name}`);
-      await uploadBytes(storageRef, file);
-      const downloadURL = await getDownloadURL(storageRef);
-      
-      setFormData({ ...formData, image: downloadURL });
+      // Em vez de fazer upload, vamos usar uma URL de imagem padrão
+      const defaultImageUrl = 'https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3';
+      setFormData({ ...formData, image: defaultImageUrl });
       setSnackbar({
         open: true,
-        message: 'Imagem carregada com sucesso!',
+        message: 'Imagem definida com sucesso!',
         severity: 'success',
       });
     } catch (error) {
-      console.error('Erro ao fazer upload da imagem:', error);
+      console.error('Erro ao definir imagem:', error);
       setSnackbar({
         open: true,
-        message: 'Erro ao carregar imagem',
+        message: 'Erro ao definir imagem',
         severity: 'error',
       });
     } finally {
