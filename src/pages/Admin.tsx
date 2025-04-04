@@ -28,7 +28,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
 import ImageIcon from '@mui/icons-material/Image';
 import { useNavigate } from 'react-router-dom';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, setDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
 
@@ -300,6 +300,71 @@ const Admin = () => {
     }
   };
 
+  // Função para limpar todos os dados do aplicativo
+  const clearAllAppData = async () => {
+    try {
+      setLoading(true);
+      
+      // 1. Limpar todos os parceiros de todos os usuários
+      const usersCollection = collection(db, 'users');
+      const usersSnapshot = await getDocs(usersCollection);
+      
+      const batch = writeBatch(db);
+      
+      // Para cada usuário
+      for (const userDoc of usersSnapshot.docs) {
+        const userId = userDoc.id;
+        
+        // Limpar parceiros do usuário
+        const partnersCollection = collection(db, 'users', userId, 'partners');
+        const partnersSnapshot = await getDocs(partnersCollection);
+        
+        partnersSnapshot.docs.forEach(partnerDoc => {
+          batch.delete(partnerDoc.ref);
+        });
+        
+        // Limpar dados do usuário (likedCards, etc)
+        batch.update(userDoc.ref, {
+          likedCards: [],
+          avatar: '👤',
+          name: userDoc.data().name || 'Usuário',
+        });
+      }
+      
+      // 2. Limpar todas as cartas
+      const cardsCollection = collection(db, 'cards');
+      const cardsSnapshot = await getDocs(cardsCollection);
+      
+      cardsSnapshot.docs.forEach(cardDoc => {
+        batch.delete(cardDoc.ref);
+      });
+      
+      // Executar todas as operações
+      await batch.commit();
+      
+      // Recriar cartas iniciais
+      await createInitialCards();
+      
+      setSnackbar({
+        open: true,
+        message: 'Todos os dados do aplicativo foram limpos com sucesso!',
+        severity: 'success',
+      });
+      
+      // Recarregar cartas
+      await loadCards();
+    } catch (error) {
+      console.error('Erro ao limpar dados do aplicativo:', error);
+      setSnackbar({
+        open: true,
+        message: 'Erro ao limpar dados do aplicativo',
+        severity: 'error',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -439,6 +504,22 @@ const Admin = () => {
               }}
             >
               Nova Carta
+            </Button>
+            <Button
+              variant="outlined"
+              color="error"
+              onClick={clearAllAppData}
+              sx={{
+                borderColor: 'rgba(255, 68, 68, 0.5)',
+                color: '#ff4444',
+                '&:hover': {
+                  borderColor: '#ff4444',
+                  background: 'rgba(255, 68, 68, 0.1)',
+                },
+                mr: 2,
+              }}
+            >
+              Limpar Todos os Dados
             </Button>
             <Button
               variant="outlined"
