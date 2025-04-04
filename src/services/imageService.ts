@@ -1,5 +1,5 @@
 // Serviço para upload de imagens usando ImgBB
-const IMGBB_API_KEY = 'YOUR_IMGBB_API_KEY'; // Substitua pela sua chave API do ImgBB
+const IMGBB_API_KEY = 'b9898541a32ed4f20c7b29ada1cb6d00'; // Substitua pela sua chave API do ImgBB
 
 export const uploadImage = async (file: File): Promise<string> => {
   try {
