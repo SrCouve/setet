@@ -303,29 +303,6 @@ const Game = () => {
     }
   };
 
-  const toggleHighlight = async (cardId: string) => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
-
-    try {
-      const userDoc = doc(db, 'users', currentUser.uid);
-      
-      if (likedCards.includes(cardId)) {
-        setLikedCards(likedCards.filter(id => id !== cardId));
-        await updateDoc(userDoc, {
-          likedCards: arrayRemove(cardId)
-        });
-      } else {
-        setLikedCards([...likedCards, cardId]);
-        await updateDoc(userDoc, {
-          likedCards: arrayUnion(cardId)
-        });
-      }
-    } catch (error) {
-      console.error('Erro ao atualizar destaque:', error);
-    }
-  };
-
   const handleShowMatches = () => {
     setShowMatches(!showMatches);
     if (hasNewMatch) {
