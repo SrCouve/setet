@@ -25,7 +25,7 @@ import { ContentCopy as ContentCopyIcon, Check as CheckIcon, Add as AddIcon, Clo
 import LogoutIcon from '@mui/icons-material/Logout';
 import { motion } from 'framer-motion';
 import { auth, db } from '../firebase';
-import { collection, addDoc, getDocs, doc, setDoc, getDoc, query, where, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, getDoc, query, where, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 
 interface Partner {
