@@ -27,7 +27,7 @@ export const Login = () => {
 
   const createUserDocument = async (user: any) => {
     try {
-      console.log('Verificando documento do usuário...');
+      console.log('Verificando documento do usuário...', user.uid);
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
       
@@ -36,24 +36,40 @@ export const Login = () => {
         const newCode = generateCode();
         
         // Criar o documento do usuário
-        await setDoc(userDocRef, {
+        const userData = {
           name: user.displayName || 'Usuário',
           email: user.email,
           code: newCode,
           createdAt: serverTimestamp(),
           lastLogin: serverTimestamp(),
-        });
+        };
         
+        console.log('Dados do usuário a serem criados:', userData);
+        await setDoc(userDocRef, userData);
         console.log('Documento do usuário criado com sucesso');
       } else {
         console.log('Atualizando documento do usuário existente...');
-        // Atualizar último login
-        await setDoc(userDocRef, {
+        // Atualizar último login e garantir que todos os campos necessários existam
+        const userData = {
           lastLogin: serverTimestamp(),
-        }, { merge: true });
+          name: user.displayName || userDoc.data().name || 'Usuário',
+          email: user.email || userDoc.data().email,
+          code: userDoc.data().code || generateCode(),
+        };
+        
+        console.log('Dados do usuário a serem atualizados:', userData);
+        await setDoc(userDocRef, userData, { merge: true });
         console.log('Documento do usuário atualizado com sucesso');
       }
       
+      // Verificar se o documento foi criado/atualizado corretamente
+      const verifyDoc = await getDoc(userDocRef);
+      if (!verifyDoc.exists()) {
+        console.error('Falha na verificação do documento');
+        return false;
+      }
+      
+      console.log('Documento verificado com sucesso:', verifyDoc.data());
       return true;
     } catch (error) {
       console.error('Erro ao criar/atualizar documento do usuário:', error);
