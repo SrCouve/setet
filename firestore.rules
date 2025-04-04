@@ -8,17 +8,26 @@ service cloud.firestore {
              request.auth.token.email == 'kaiohyuuga@gmail.com';
     }
 
+    // Função para verificar se o usuário está acessando seu próprio documento
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
     // Regras para usuários
     match /users/{userId} {
       // Admin pode ler e escrever em qualquer documento de usuário
       allow read, write: if isAdmin();
       
       // Usuários normais podem ler e escrever apenas em seus próprios documentos
-      allow read, write: if request.auth != null;
+      allow read, write: if isOwner(userId);
       
       match /partners/{partnerId} {
-        // Permitir que qualquer usuário autenticado leia e escreva
-        allow read, write: if request.auth != null;
+        // Permitir que o usuário leia e escreva em seus próprios parceiros
+        allow read, write: if isOwner(userId);
+        
+        // Permitir que o parceiro leia e escreva no documento de parceria
+        allow read, write: if request.auth != null && 
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)/partners/$(userId));
       }
     }
 
