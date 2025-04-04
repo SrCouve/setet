@@ -397,6 +397,39 @@ const Dashboard = () => {
     }
   };
 
+  const handleRemoveRejection = async (partnerId: string) => {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+
+      const partnerRef = doc(db, 'users', currentUser.uid, 'partners', partnerId);
+      const partner = partners.find(p => p.id === partnerId);
+      if (!partner) return;
+
+      const myRef = doc(db, 'users', partner.partnerId, 'partners', currentUser.uid);
+
+      const batch = writeBatch(db);
+      batch.delete(partnerRef);
+      batch.delete(myRef);
+      await batch.commit();
+
+      setPartners(prev => prev.filter(p => p.id !== partnerId));
+
+      setSnackbar({
+        open: true,
+        message: 'Parceiro removido. Você pode enviar uma nova solicitação.',
+        severity: 'success',
+      });
+    } catch (error) {
+      console.error('Erro ao remover parceiro:', error);
+      setSnackbar({
+        open: true,
+        message: 'Erro ao remover parceiro. Tente novamente.',
+        severity: 'error',
+      });
+    }
+  };
+
   return (
     <Box
       sx={{
@@ -634,6 +667,23 @@ const Dashboard = () => {
                       <CloseIcon />
                     </IconButton>
                   </Box>
+                )}
+                {partner.status === 'rejected' && partner.requestedBy !== auth.currentUser?.uid && (
+                  <Button
+                    onClick={() => handleRemoveRejection(partner.id)}
+                    variant="outlined"
+                    size="small"
+                    sx={{
+                      color: '#ff4444',
+                      borderColor: '#ff4444',
+                      '&:hover': {
+                        borderColor: '#ff6666',
+                        bgcolor: 'rgba(255, 68, 68, 0.1)',
+                      },
+                    }}
+                  >
+                    Remover
+                  </Button>
                 )}
                 {partner.status === 'accepted' && (
                   <Button
