@@ -295,19 +295,9 @@ const Dashboard = () => {
 
       await batch.commit();
 
-      // Atualizar estado local
-      const newPartner: Partner = {
-        id: newPartnerRef.id,
-        name: newPartnerName,
-        avatar: '👤',
-        online: false,
-        code: newPartnerCode,
-        partnerId: partnerId,
-        status: 'pending' as const,
-        requestedBy: currentUser.uid,
-      };
+      // Recarregar parceiros ao invés de atualizar o estado local
+      await reloadPartners();
 
-      setPartners(prev => [...prev, newPartner]);
       setOpenDialog(false);
       setNewPartnerName('');
       setNewPartnerCode('');
@@ -332,18 +322,18 @@ const Dashboard = () => {
       if (!currentUser) return;
 
       const partnerRef = doc(db, 'users', currentUser.uid, 'partners', partnerId);
-      const myRef = doc(db, 'users', partnerId, 'partners', currentUser.uid);
+      const partner = partners.find(p => p.id === partnerId);
+      if (!partner) return;
+
+      const myRef = doc(db, 'users', partner.partnerId, 'partners', currentUser.uid);
 
       const batch = writeBatch(db);
-      batch.update(partnerRef, { status: 'accepted' });
-      batch.update(myRef, { status: 'accepted' });
+      batch.update(partnerRef, { status: 'accepted' as const });
+      batch.update(myRef, { status: 'accepted' as const });
       await batch.commit();
 
-      setPartners(prev =>
-        prev.map(p =>
-          p.id === partnerId ? { ...p, status: 'accepted' } : p
-        )
-      );
+      // Recarregar parceiros ao invés de atualizar o estado local
+      await reloadPartners();
 
       setSnackbar({
         open: true,
@@ -376,11 +366,8 @@ const Dashboard = () => {
       batch.update(myRef, { status: 'rejected' as const });
       await batch.commit();
 
-      setPartners(prev =>
-        prev.map(p =>
-          p.id === partnerId ? { ...p, status: 'rejected' as const } : p
-        )
-      );
+      // Recarregar parceiros ao invés de atualizar o estado local
+      await reloadPartners();
 
       setSnackbar({
         open: true,
@@ -397,6 +384,33 @@ const Dashboard = () => {
     }
   };
 
+  // Limpar cache e recarregar parceiros
+  const reloadPartners = async () => {
+    try {
+      setLoading(true);
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+
+      // Limpar cache local
+      setPartners([]);
+
+      // Recarregar parceiros do Firestore
+      const partnersCollection = collection(db, 'users', currentUser.uid, 'partners');
+      const partnersSnapshot = await getDocs(partnersCollection);
+      const partnersData = partnersSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Partner[];
+
+      setPartners(partnersData);
+    } catch (error) {
+      console.error('Erro ao recarregar parceiros:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Usar o reloadPartners após operações importantes
   const handleRemoveRejection = async (partnerId: string) => {
     try {
       const currentUser = auth.currentUser;
@@ -413,7 +427,8 @@ const Dashboard = () => {
       batch.delete(myRef);
       await batch.commit();
 
-      setPartners(prev => prev.filter(p => p.id !== partnerId));
+      // Recarregar parceiros ao invés de atualizar o estado local
+      await reloadPartners();
 
       setSnackbar({
         open: true,
@@ -668,7 +683,7 @@ const Dashboard = () => {
                     </IconButton>
                   </Box>
                 )}
-                {partner.status === 'rejected' && partner.requestedBy !== auth.currentUser?.uid && (
+                {partner.status === 'rejected' && (
                   <Button
                     onClick={() => handleRemoveRejection(partner.id)}
                     variant="outlined"
