@@ -431,19 +431,42 @@ const Dashboard = () => {
       setNewPartnerName('');
       setNewPartnerCode('');
       setCopied(false);
+
+      // Limpar todos os dados de parceiros do Firestore
+      const partnersCollection = collection(db, 'users', currentUser.uid, 'partners');
+      const partnersSnapshot = await getDocs(partnersCollection);
+      
+      // Criar um batch para deletar todos os parceiros
+      const batch = writeBatch(db);
+      
+      // Deletar todos os parceiros do usuário atual
+      for (const docSnapshot of partnersSnapshot.docs) {
+        const partnerData = docSnapshot.data();
+        batch.delete(docSnapshot.ref);
+        
+        // Se o parceiro existir, também deletar a referência inversa
+        if (partnerData.partnerId) {
+          const reversePartnerRef = doc(db, 'users', partnerData.partnerId, 'partners', currentUser.uid);
+          batch.delete(reversePartnerRef);
+        }
+      }
+
+      // Executar o batch para deletar todos os parceiros
+      await batch.commit();
+
       setSnackbar({
         open: true,
-        message: 'Cache limpo com sucesso!',
+        message: 'Todos os parceiros foram removidos com sucesso!',
         severity: 'success',
       });
 
-      // Recarregar parceiros do Firestore
+      // Recarregar parceiros do Firestore (agora deve estar vazio)
       await reloadPartners();
     } catch (error) {
       console.error('Erro ao limpar interações:', error);
       setSnackbar({
         open: true,
-        message: 'Erro ao limpar interações. Tente novamente.',
+        message: 'Erro ao limpar parceiros. Tente novamente.',
         severity: 'error',
       });
     } finally {
