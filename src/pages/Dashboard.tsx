@@ -393,6 +393,9 @@ const Dashboard = () => {
 
       // Limpar cache local
       setPartners([]);
+      setOpenDialog(false);
+      setNewPartnerName('');
+      setNewPartnerCode('');
 
       // Recarregar parceiros do Firestore
       const partnersCollection = collection(db, 'users', currentUser.uid, 'partners');
@@ -405,6 +408,44 @@ const Dashboard = () => {
       setPartners(partnersData);
     } catch (error) {
       console.error('Erro ao recarregar parceiros:', error);
+      setSnackbar({
+        open: true,
+        message: 'Erro ao recarregar parceiros. Tente novamente.',
+        severity: 'error',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Limpar todas as interações e recarregar
+  const clearAllInteractions = async () => {
+    try {
+      setLoading(true);
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+
+      // Limpar todos os estados locais
+      setPartners([]);
+      setOpenDialog(false);
+      setNewPartnerName('');
+      setNewPartnerCode('');
+      setCopied(false);
+      setSnackbar({
+        open: true,
+        message: 'Cache limpo com sucesso!',
+        severity: 'success',
+      });
+
+      // Recarregar parceiros do Firestore
+      await reloadPartners();
+    } catch (error) {
+      console.error('Erro ao limpar interações:', error);
+      setSnackbar({
+        open: true,
+        message: 'Erro ao limpar interações. Tente novamente.',
+        severity: 'error',
+      });
     } finally {
       setLoading(false);
     }
@@ -457,8 +498,22 @@ const Dashboard = () => {
         gap: 3,
       }}
     >
-      {/* Header with Logout */}
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+      {/* Header with Logout and Clear Cache */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Button
+          onClick={clearAllInteractions}
+          variant="outlined"
+          sx={{
+            color: 'white',
+            borderColor: 'rgba(255, 255, 255, 0.3)',
+            '&:hover': {
+              borderColor: 'white',
+              background: 'rgba(255, 255, 255, 0.1)',
+            },
+          }}
+        >
+          Limpar Cache
+        </Button>
         <IconButton
           onClick={handleLogout}
           sx={{
