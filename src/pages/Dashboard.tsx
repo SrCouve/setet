@@ -345,43 +345,30 @@ const Dashboard = () => {
   const handleAcceptPartner = async (partnerId: string) => {
     try {
       const currentUser = auth.currentUser;
-      if (!currentUser) return;
-
-      const partnerRef = doc(db, 'users', currentUser.uid, 'partners', partnerId);
-      const partner = partners.find(p => p.id === partnerId);
-      if (!partner) return;
-
-      const myRef = doc(db, 'users', partner.partnerId, 'partners', currentUser.uid);
-
-      // Verificar se os documentos existem
-      const [partnerDoc, myDoc] = await Promise.all([
-        getDoc(partnerRef),
-        getDoc(myRef)
-      ]);
-
-      if (!partnerDoc.exists()) {
-        console.error('Documento do parceiro não encontrado');
-        setSnackbar({
-          open: true,
-          message: 'Erro ao aceitar parceiro. Documento não encontrado.',
-          severity: 'error',
-        });
-        return;
-      }
-
-      if (!myDoc.exists()) {
-        console.error('Documento do usuário não encontrado');
-        setSnackbar({
-          open: true,
-          message: 'Erro ao aceitar parceiro. Documento não encontrado.',
-          severity: 'error',
-        });
+      if (!currentUser) {
+        console.error('Usuário não autenticado');
         return;
       }
 
       const batch = writeBatch(db);
-      batch.update(partnerRef, { status: 'accepted' as const });
-      batch.update(myRef, { status: 'accepted' as const });
+      
+      // Referência para o documento do parceiro no meu subdiretório
+      const myPartnerRef = doc(db, 'users', currentUser.uid, 'partners', partnerId);
+      
+      // Referência para o meu documento no subdiretório do parceiro
+      const theirPartnerRef = doc(db, 'users', partnerId, 'partners', currentUser.uid);
+      
+      // Atualizar ambos os documentos
+      batch.update(myPartnerRef, { 
+        status: 'accepted',
+        lastUpdated: serverTimestamp()
+      });
+      
+      batch.update(theirPartnerRef, { 
+        status: 'accepted',
+        lastUpdated: serverTimestamp()
+      });
+
       await batch.commit();
 
       setSnackbar({
@@ -402,51 +389,35 @@ const Dashboard = () => {
   const handleRejectPartner = async (partnerId: string) => {
     try {
       const currentUser = auth.currentUser;
-      if (!currentUser) return;
-
-      const partnerRef = doc(db, 'users', currentUser.uid, 'partners', partnerId);
-      const partner = partners.find(p => p.id === partnerId);
-      if (!partner) return;
-
-      const myRef = doc(db, 'users', partner.partnerId, 'partners', currentUser.uid);
-
-      // Verificar se os documentos existem
-      const [partnerDoc, myDoc] = await Promise.all([
-        getDoc(partnerRef),
-        getDoc(myRef)
-      ]);
-
-      if (!partnerDoc.exists()) {
-        console.error('Documento do parceiro não encontrado');
-        setSnackbar({
-          open: true,
-          message: 'Erro ao rejeitar parceiro. Documento não encontrado.',
-          severity: 'error',
-        });
-        return;
-      }
-
-      if (!myDoc.exists()) {
-        console.error('Documento do usuário não encontrado');
-        setSnackbar({
-          open: true,
-          message: 'Erro ao rejeitar parceiro. Documento não encontrado.',
-          severity: 'error',
-        });
+      if (!currentUser) {
+        console.error('Usuário não autenticado');
         return;
       }
 
       const batch = writeBatch(db);
-      batch.update(partnerRef, { status: 'rejected' as const });
-      batch.update(myRef, { status: 'rejected' as const });
-      await batch.commit();
+      
+      // Referência para o documento do parceiro no meu subdiretório
+      const myPartnerRef = doc(db, 'users', currentUser.uid, 'partners', partnerId);
+      
+      // Referência para o meu documento no subdiretório do parceiro
+      const theirPartnerRef = doc(db, 'users', partnerId, 'partners', currentUser.uid);
+      
+      // Atualizar ambos os documentos
+      batch.update(myPartnerRef, { 
+        status: 'rejected',
+        lastUpdated: serverTimestamp()
+      });
+      
+      batch.update(theirPartnerRef, { 
+        status: 'rejected',
+        lastUpdated: serverTimestamp()
+      });
 
-      // Recarregar parceiros ao invés de atualizar o estado local
-      await reloadPartners();
+      await batch.commit();
 
       setSnackbar({
         open: true,
-        message: 'Solicitação rejeitada',
+        message: 'Parceria rejeitada.',
         severity: 'info',
       });
     } catch (error) {
@@ -454,6 +425,91 @@ const Dashboard = () => {
       setSnackbar({
         open: true,
         message: 'Erro ao rejeitar parceiro. Tente novamente.',
+        severity: 'error',
+      });
+    }
+  };
+
+  const handleSendPartnerRequest = async () => {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        console.error('Usuário não autenticado');
+        return;
+      }
+
+      // Verificar se o código do parceiro existe
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('code', '==', newPartnerCode));
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        setSnackbar({
+          open: true,
+          message: 'Código de parceiro não encontrado.',
+          severity: 'error',
+        });
+        return;
+      }
+
+      const partnerDoc = querySnapshot.docs[0];
+      const partnerId = partnerDoc.id;
+
+      // Verificar se já existe uma parceria
+      const existingPartnerRef = doc(db, 'users', currentUser.uid, 'partners', partnerId);
+      const existingPartnerDoc = await getDoc(existingPartnerRef);
+
+      if (existingPartnerDoc.exists()) {
+        setSnackbar({
+          open: true,
+          message: 'Você já tem uma parceria com este usuário.',
+          severity: 'error',
+        });
+        return;
+      }
+
+      const batch = writeBatch(db);
+      
+      // Criar documento de parceria no meu subdiretório
+      const myPartnerRef = doc(db, 'users', currentUser.uid, 'partners', partnerId);
+      batch.set(myPartnerRef, {
+        name: newPartnerName,
+        code: newPartnerCode,
+        partnerId: partnerId,
+        status: 'pending',
+        requestedBy: currentUser.uid,
+        createdAt: serverTimestamp(),
+        lastUpdated: serverTimestamp(),
+      });
+
+      // Criar documento de parceria no subdiretório do parceiro
+      const theirPartnerRef = doc(db, 'users', partnerId, 'partners', currentUser.uid);
+      batch.set(theirPartnerRef, {
+        name: currentUser.displayName || 'Usuário',
+        code: userCode,
+        partnerId: currentUser.uid,
+        status: 'pending',
+        requestedBy: currentUser.uid,
+        createdAt: serverTimestamp(),
+        lastUpdated: serverTimestamp(),
+      });
+
+      await batch.commit();
+
+      setSnackbar({
+        open: true,
+        message: 'Solicitação de parceria enviada com sucesso!',
+        severity: 'success',
+      });
+
+      setNewPartnerName('');
+      setNewPartnerCode('');
+      setOpenDialog(false);
+    } catch (error) {
+      console.error('Erro ao enviar solicitação de parceria:', error);
+      setSnackbar({
+        open: true,
+        message: 'Erro ao enviar solicitação. Tente novamente.',
         severity: 'error',
       });
     }
@@ -954,7 +1010,7 @@ const Dashboard = () => {
             Cancelar
           </Button>
           <Button
-            onClick={handleAddPartner}
+            onClick={handleSendPartnerRequest}
             variant="contained"
             sx={{
               bgcolor: '#ff4444',
