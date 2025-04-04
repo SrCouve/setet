@@ -85,170 +85,99 @@ const Game = () => {
   const dragThreshold = 100;
 
   // Carregar dados iniciais
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        const currentUser = auth.currentUser;
-        if (!currentUser || !partnerId) {
-          setError('Usuário não autenticado ou parceiro não especificado');
-          return;
-        }
+  const loadData = async () => {
+    if (!auth.currentUser || !partnerId) {
+      setError('Usuário não autenticado ou parceiro não especificado');
+      return;
+    }
 
-        // Carregar cartas primeiro
-        const cardsCollection = collection(db, 'cards');
-        const cardsSnapshot = await getDocs(cardsCollection);
-        const cardsData = cardsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as CardData[];
+    try {
+      setLoading(true);
+      setError(null);
 
-        if (cardsData.length === 0) {
-          setError('Não há cartas disponíveis no momento');
-          return;
-        }
-
-        // Carregar informações do parceiro
-        const partnerDoc = await getDoc(doc(db, 'users', partnerId));
-        if (!partnerDoc.exists()) {
-          setError('Parceiro não encontrado');
-          return;
-        }
-
+      // Carregar dados do parceiro
+      const partnerDoc = await getDoc(doc(db, 'users', partnerId));
+      if (partnerDoc.exists()) {
         const partnerData = partnerDoc.data();
-        const partnerLikedCards = partnerData.likedCards || [];
-        const partnerFireCards = partnerData.fireCards || [];
-
         setPartner({
           id: partnerId,
-          name: partnerData.name || 'Parceiro',
+          name: partnerData.name,
           avatar: partnerData.avatar || '👤',
           online: true,
-          likedCards: partnerLikedCards,
-          fireCards: partnerFireCards,
+          likedCards: partnerData.likedCards || [],
+          fireCards: partnerData.fireCards || [],
         });
-
-        // Verificar se é uma nova sessão
-        const matchDoc = await getDoc(doc(db, 'matches', `${currentUser.uid}_${partnerId}`));
-        const matchData = matchDoc.data();
-
-        if (!matchData || !matchData.lastPlayed) {
-          // Nova sessão - inicializar com valores vazios
-          const initialData = {
-            lastPlayed: new Date().toISOString(),
-            viewedCards: [],
-            likedCards: [],
-            fireCards: [],
-            matchedCards: []
-          };
-
-          await setDoc(doc(db, 'matches', `${currentUser.uid}_${partnerId}`), initialData);
-          
-          setViewedCards([]);
-          setLikedCards([]);
-          setFireCards([]);
-          setMatchedCards([]);
-          setCards(cardsData);
-          setCurrentCardIndex(0);
-        } else {
-          // Sessão existente - carregar dados salvos
-          const savedViewedCards = matchData.viewedCards || [];
-          const savedLikedCards = matchData.likedCards || [];
-          const savedFireCards = matchData.fireCards || [];
-          const savedMatchedCards = matchData.matchedCards || [];
-
-          setViewedCards(savedViewedCards);
-          setLikedCards(savedLikedCards);
-          setFireCards(savedFireCards);
-          setMatchedCards(savedMatchedCards);
-
-          // Verificar matches existentes
-          const existingMatches = cardsData.filter(card => 
-            partnerLikedCards.includes(card.id) && 
-            savedLikedCards.includes(card.id) &&
-            !savedMatchedCards.includes(card.id)
-          );
-
-          if (existingMatches.length > 0) {
-            const newMatchedCards = [...savedMatchedCards, ...existingMatches.map(card => card.id)];
-            setMatchedCards(newMatchedCards);
-            setHasNewMatch(true);
-            
-            // Atualizar matchedCards no documento de match
-            await updateDoc(doc(db, 'matches', `${currentUser.uid}_${partnerId}`), {
-              matchedCards: newMatchedCards
-            });
-          }
-
-          // Filtrar cartas já vistas
-          const availableCards = cardsData.filter(card => !savedViewedCards.includes(card.id));
-          
-          if (availableCards.length > 0) {
-            setCards(availableCards);
-            setCurrentCardIndex(0);
-          } else {
-            // Se todas as cartas foram vistas, reiniciar
-            setViewedCards([]);
-            setCards(cardsData);
-            setCurrentCardIndex(0);
-            await updateDoc(doc(db, 'matches', `${currentUser.uid}_${partnerId}`), {
-              viewedCards: [],
-              lastPlayed: new Date().toISOString()
-            });
-          }
-        }
-
-        // Configurar listener para curtidas do parceiro e matches
-        const unsubscribe = onSnapshot(doc(db, 'users', partnerId), (docSnapshot) => {
-          const data = docSnapshot.data();
-          if (data) {
-            const partnerLikedCards = data.likedCards || [];
-            setPartner(prev => prev ? {
-              ...prev,
-              likedCards: partnerLikedCards,
-              fireCards: data.fireCards || [],
-            } : null);
-            
-            // Verificar novos matches
-            const newMatches = cardsData.filter(card => 
-              partnerLikedCards.includes(card.id) && 
-              likedCards.includes(card.id) &&
-              !matchedCards.includes(card.id)
-            );
-            
-            if (newMatches.length > 0) {
-              const newMatchedCards = [...matchedCards, ...newMatches.map(card => card.id)];
-              setMatchedCards(newMatchedCards);
-              setHasNewMatch(true);
-              
-              // Atualizar matchedCards no documento de match
-              const matchRef = doc(db, 'matches', `${currentUser.uid}_${partnerId}`);
-              updateDoc(matchRef, {
-                matchedCards: newMatchedCards
-              });
-
-              setSnackbar({
-                open: true,
-                message: `Novo match: ${newMatches[0].title}!`,
-                severity: 'success',
-              });
-            }
-          }
-        });
-
-        return () => unsubscribe();
-      } catch (error) {
-        console.error('Erro ao carregar dados:', error);
-        setError('Ocorreu um erro ao carregar os dados. Tente novamente mais tarde.');
-      } finally {
-        setLoading(false);
       }
-    };
 
-    loadData();
-  }, [partnerId]);
+      // Carregar dados do match
+      const matchDoc = await getDoc(doc(db, 'matches', `${auth.currentUser.uid}_${partnerId}`));
+      if (matchDoc.exists()) {
+        const matchData = matchDoc.data();
+        setLikedCards(matchData.likedCards || []);
+        setViewedCards(matchData.viewedCards || []);
+        setMatchedCards(matchData.matchedCards || []);
+      }
+
+      // Carregar dados do parceiro para matches
+      const partnerMatchDoc = await getDoc(doc(db, 'matches', `${partnerId}_${auth.currentUser.uid}`));
+      if (partnerMatchDoc.exists()) {
+        const partnerMatchData = partnerMatchDoc.data();
+        // Atualizar os matches com os dados do parceiro
+        setMatchedCards(prev => {
+          const allMatches = [...new Set([...prev, ...(partnerMatchData.matchedCards || [])])];
+          return allMatches;
+        });
+      }
+
+      // Carregar todas as cartas disponíveis
+      const cardsSnapshot = await getDocs(collection(db, 'cards'));
+      const allCards = cardsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as CardData[];
+
+      if (allCards.length === 0) {
+        setError('Não há cartas disponíveis no momento');
+        return;
+      }
+
+      setCards(allCards);
+
+      // Configurar listener para likes do parceiro
+      const unsubscribePartner = onSnapshot(doc(db, 'users', partnerId), (doc) => {
+        if (doc.exists()) {
+          const data = doc.data();
+          setPartner(prev => ({
+            ...prev!,
+            likedCards: data.likedCards || [],
+            fireCards: data.fireCards || [],
+          }));
+        }
+      });
+
+      // Configurar listener para matches
+      const unsubscribeMatch = onSnapshot(doc(db, 'matches', `${auth.currentUser.uid}_${partnerId}`), (doc) => {
+        if (doc.exists()) {
+          const data = doc.data();
+          setMatchedCards(data.matchedCards || []);
+        }
+      });
+
+      return () => {
+        unsubscribePartner();
+        unsubscribeMatch();
+      };
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
+      setSnackbar({
+        open: true,
+        message: 'Erro ao carregar dados. Tente novamente.',
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Funções de interação com cartas
   const handleCardAction = async (action: 'like' | 'skip') => {
@@ -288,7 +217,7 @@ const Game = () => {
         await batch.commit();
 
         // Verificar se é um match (após o commit do batch)
-        if (partner?.likedCards.includes(currentCard.id) && !matchedCards.includes(currentCard.id)) {
+        if (partner?.likedCards?.includes(currentCard.id) && !matchedCards.includes(currentCard.id)) {
           const newMatchedCards = [...matchedCards, currentCard.id];
           setMatchedCards(newMatchedCards);
           setHasNewMatch(true);
@@ -316,35 +245,14 @@ const Game = () => {
         });
       }
 
-      // Se todas as cartas foram vistas
+      // Avançar para a próxima carta
+      setCurrentCardIndex(prev => prev + 1);
+      
+      // Se todas as cartas foram vistas, recarregar
       if (currentCardIndex === cards.length - 1) {
-        try {
-          // Recarregar todas as cartas
-          const cardsCollection = collection(db, 'cards');
-          const cardsSnapshot = await getDocs(cardsCollection);
-          const allCards = cardsSnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          })) as CardData[];
-
-          if (allCards.length > 0) {
-            // Limpar histórico de cartas vistas e recarregar todas as cartas
-            setViewedCards([]);
-            setCards(allCards);
-            setCurrentCardIndex(0);
-            await updateDoc(matchDoc, {
-              viewedCards: [],
-              lastPlayed: new Date().toISOString()
-            });
-          }
-        } catch (reloadError) {
-          console.error('Erro ao recarregar cartas:', reloadError);
-        }
-      } else {
-        // Avançar para a próxima carta com um pequeno delay para a animação
-        setTimeout(() => {
-          setCurrentCardIndex(currentCardIndex + 1);
-        }, 300);
+        setViewedCards([]);
+        setCurrentCardIndex(0);
+        await loadData();
       }
     } catch (error) {
       console.error('Erro ao processar ação:', error);
