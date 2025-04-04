@@ -260,6 +260,7 @@ const Game = () => {
     
     try {
       const matchDoc = doc(db, 'matches', `${currentUser.uid}_${partnerId}`);
+      const partnerMatchDoc = doc(db, 'matches', `${partnerId}_${currentUser.uid}`);
       const userDoc = doc(db, 'users', currentUser.uid);
       
       // Adicionar carta às já vistas
@@ -292,10 +293,15 @@ const Game = () => {
           setMatchedCards(newMatchedCards);
           setHasNewMatch(true);
           
-          // Atualizar matchedCards
-          await updateDoc(matchDoc, {
+          // Atualizar matchedCards em ambos os documentos de match
+          const batch = writeBatch(db);
+          batch.update(matchDoc, {
             matchedCards: arrayUnion(currentCard.id)
           });
+          batch.update(partnerMatchDoc, {
+            matchedCards: arrayUnion(currentCard.id)
+          });
+          await batch.commit();
 
           setSnackbar({
             open: true,
@@ -810,7 +816,7 @@ const Game = () => {
         <Paper
           elevation={0}
           sx={{
-            background: 'rgba(255, 255, 255, 0.05)',
+            background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
             backdropFilter: 'blur(10px)',
             borderRadius: 0,
             borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
@@ -850,15 +856,16 @@ const Game = () => {
                   elevation={0}
                   sx={{
                     minWidth: 200,
-                    background: 'rgba(255, 255, 255, 0.08)',
+                    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
                     backdropFilter: 'blur(10px)',
                     border: '1px solid rgba(255, 255, 255, 0.1)',
                     borderRadius: 2,
                     cursor: 'pointer',
-                    transition: 'transform 0.2s ease-in-out',
+                    transition: 'all 0.3s ease-in-out',
                     '&:hover': {
                       transform: 'scale(1.05)',
                       border: '1px solid rgba(255, 255, 255, 0.2)',
+                      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
                     },
                   }}
                   onClick={() => setSelectedCard(card)}
@@ -932,7 +939,7 @@ const Game = () => {
             sx={{
               width: '90%',
               maxWidth: '600px',
-              bgcolor: '#000000',
+              background: 'linear-gradient(135deg, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.8) 100%)',
               border: '1px solid rgba(255, 255, 255, 0.1)',
               borderRadius: 2,
               p: { xs: 3, sm: 5 },
