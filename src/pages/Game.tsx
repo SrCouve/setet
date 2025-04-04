@@ -251,13 +251,15 @@ const Game = () => {
       }
     }
     
-    // Avançar para a próxima carta
-    setCurrentCardIndex(currentCardIndex + 1);
-    
-    // Verificar se é a última carta
-    if (currentCardIndex === cards.length - 2) {
-      setNoMoreCards(true);
-    }
+    // Avançar para a próxima carta com um pequeno delay para a animação
+    setTimeout(() => {
+      setCurrentCardIndex(currentCardIndex + 1);
+      
+      // Verificar se é a última carta
+      if (currentCardIndex === cards.length - 2) {
+        setNoMoreCards(true);
+      }
+    }, 300);
   };
 
   const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
@@ -731,7 +733,7 @@ const Game = () => {
           overflow: 'hidden',
         }}
       >
-        <AnimatePresence>
+        <AnimatePresence mode="wait">
           {currentCard && (
             <motion.div
               key={currentCard.id}
