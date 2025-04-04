@@ -335,6 +335,32 @@ const Dashboard = () => {
 
       const myRef = doc(db, 'users', partner.partnerId, 'partners', currentUser.uid);
 
+      // Verificar se os documentos existem
+      const [partnerDoc, myDoc] = await Promise.all([
+        getDoc(partnerRef),
+        getDoc(myRef)
+      ]);
+
+      if (!partnerDoc.exists()) {
+        console.error('Documento do parceiro não encontrado');
+        setSnackbar({
+          open: true,
+          message: 'Erro ao aceitar parceiro. Documento não encontrado.',
+          severity: 'error',
+        });
+        return;
+      }
+
+      if (!myDoc.exists()) {
+        console.error('Documento do usuário não encontrado');
+        setSnackbar({
+          open: true,
+          message: 'Erro ao aceitar parceiro. Documento não encontrado.',
+          severity: 'error',
+        });
+        return;
+      }
+
       const batch = writeBatch(db);
       batch.update(partnerRef, { status: 'accepted' as const });
       batch.update(myRef, { status: 'accepted' as const });
@@ -365,6 +391,32 @@ const Dashboard = () => {
       if (!partner) return;
 
       const myRef = doc(db, 'users', partner.partnerId, 'partners', currentUser.uid);
+
+      // Verificar se os documentos existem
+      const [partnerDoc, myDoc] = await Promise.all([
+        getDoc(partnerRef),
+        getDoc(myRef)
+      ]);
+
+      if (!partnerDoc.exists()) {
+        console.error('Documento do parceiro não encontrado');
+        setSnackbar({
+          open: true,
+          message: 'Erro ao rejeitar parceiro. Documento não encontrado.',
+          severity: 'error',
+        });
+        return;
+      }
+
+      if (!myDoc.exists()) {
+        console.error('Documento do usuário não encontrado');
+        setSnackbar({
+          open: true,
+          message: 'Erro ao rejeitar parceiro. Documento não encontrado.',
+          severity: 'error',
+        });
+        return;
+      }
 
       const batch = writeBatch(db);
       batch.update(partnerRef, { status: 'rejected' as const });
