@@ -14,6 +14,11 @@ import {
   Collapse,
   Modal,
   Fade,
+  Container,
+  useTheme,
+  useMediaQuery,
+  CircularProgress,
+  Tooltip,
 } from '@mui/material';
 import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from 'framer-motion';
 import FavoriteIcon from '@mui/icons-material/Favorite';
@@ -46,6 +51,8 @@ interface Partner {
 const Game = () => {
   const { partnerId } = useParams();
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [matchedCards, setMatchedCards] = useState<string[]>([]);
   const [showMatches, setShowMatches] = useState(false);
@@ -56,21 +63,26 @@ const Game = () => {
   const [partner, setPartner] = useState<Partner | null>(null);
   const [viewedCards, setViewedCards] = useState<string[]>([]);
   const [noMoreCards, setNoMoreCards] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Carregar cartas do Firebase e resetar o índice
   useEffect(() => {
     const loadData = async () => {
       try {
+        setLoading(true);
+        setError(null);
+        
         const currentUser = auth.currentUser;
         if (!currentUser || !partnerId) {
-          console.error('Usuário não autenticado ou parceiro não especificado');
+          setError('Usuário não autenticado ou parceiro não especificado');
           return;
         }
 
         // Carregar informações do parceiro
         const partnerDoc = await getDoc(doc(db, 'users', partnerId));
         if (!partnerDoc.exists()) {
-          console.error('Parceiro não encontrado');
+          setError('Parceiro não encontrado');
           return;
         }
 
@@ -91,11 +103,21 @@ const Game = () => {
           ...doc.data()
         })) as CardData[];
 
+        if (cardsData.length === 0) {
+          setError('Não há cartas disponíveis no momento');
+          setNoMoreCards(true);
+          return;
+        }
+
         // Carregar cartas já vistas do usuário
         const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
         const userData = userDoc.data();
         const viewedCards = userData?.viewedCards || [];
         setViewedCards(viewedCards);
+
+        // Carregar cartas que o usuário já curtiu
+        const likedCards = userData?.likedCards || [];
+        setHighlightedCards(likedCards);
 
         // Filtrar cartas já vistas
         const newCards = cardsData.filter(card => !viewedCards.includes(card.id));
@@ -109,6 +131,9 @@ const Game = () => {
         }
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
+        setError('Ocorreu um erro ao carregar os dados. Tente novamente mais tarde.');
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -117,7 +142,7 @@ const Game = () => {
 
   // Motion values for drag
   const x = useMotionValue(0);
-  const cardWidth = 200; // Largura de cada card
+  const cardWidth = isMobile ? 300 : 400; // Largura de cada card ajustada para responsividade
   const gap = 16; // Espaço entre os cards
   const leftLimit = cards.length > 1 ? -(cards.length - 1) * (cardWidth + gap) : 0;
 
@@ -224,7 +249,7 @@ const Game = () => {
 
   const currentCard = cards[currentCardIndex];
 
-  if (!currentCard) {
+  if (loading) {
     return (
       <Box
         sx={{
@@ -238,15 +263,88 @@ const Game = () => {
           color: 'white',
         }}
       >
+        <CircularProgress sx={{ color: '#ff4444', mb: 3 }} />
+        <Typography variant="h6">Carregando...</Typography>
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box
+        sx={{
+          minHeight: '100vh',
+          height: '100%',
+          background: '#000000',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'white',
+          p: 3,
+        }}
+      >
         <Paper
           sx={{
             p: 4,
-            maxWidth: '400px',
+            maxWidth: '500px',
             width: '100%',
             background: 'rgba(255, 255, 255, 0.05)',
             backdropFilter: 'blur(10px)',
             border: '1px solid rgba(255, 255, 255, 0.1)',
             textAlign: 'center',
+            borderRadius: 2,
+          }}
+        >
+          <Typography variant="h5" sx={{ mb: 2, color: '#ff4444' }}>
+            Erro
+          </Typography>
+          <Typography variant="body1" sx={{ mb: 3, color: 'rgba(255, 255, 255, 0.7)' }}>
+            {error}
+          </Typography>
+          <Button
+            variant="contained"
+            onClick={() => navigate('/dashboard')}
+            sx={{
+              background: '#ff4444',
+              color: 'white',
+              '&:hover': {
+                background: '#ff6666',
+              },
+            }}
+          >
+            Voltar ao Dashboard
+          </Button>
+        </Paper>
+      </Box>
+    );
+  }
+
+  if (!currentCard) {
+    return (
+      <Box
+        sx={{
+          minHeight: '100vh',
+          height: '100%',
+          background: '#000000',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'white',
+          p: 3,
+        }}
+      >
+        <Paper
+          sx={{
+            p: 4,
+            maxWidth: '500px',
+            width: '100%',
+            background: 'rgba(255, 255, 255, 0.05)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            textAlign: 'center',
+            borderRadius: 2,
           }}
         >
           <Typography variant="h5" sx={{ mb: 2 }}>
@@ -263,10 +361,10 @@ const Game = () => {
             variant="contained"
             onClick={() => navigate('/dashboard')}
             sx={{
-              background: 'rgba(255, 255, 255, 0.1)',
+              background: '#ff4444',
               color: 'white',
               '&:hover': {
-                background: 'rgba(255, 255, 255, 0.2)',
+                background: '#ff6666',
               },
             }}
           >
@@ -305,17 +403,19 @@ const Game = () => {
           zIndex: 2,
         }}
       >
-        <IconButton 
-          onClick={() => navigate('/dashboard')} 
-          sx={{ 
-            color: 'white',
-            '&:hover': {
-              background: 'rgba(255, 255, 255, 0.1)',
-            },
-          }}
-        >
-          <ArrowBackIcon />
-        </IconButton>
+        <Tooltip title="Voltar ao Dashboard">
+          <IconButton 
+            onClick={() => navigate('/dashboard')} 
+            sx={{ 
+              color: 'white',
+              '&:hover': {
+                background: 'rgba(255, 255, 255, 0.1)',
+              },
+            }}
+          >
+            <ArrowBackIcon />
+          </IconButton>
+        </Tooltip>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Avatar sx={{ bgcolor: 'transparent', fontSize: '1.5rem' }}>
@@ -327,12 +427,14 @@ const Game = () => {
         </Box>
 
         <Box sx={{ position: 'relative' }}>
-          <IconButton
-            onClick={handleShowMatches}
-            sx={{ color: 'white' }}
-          >
-            {showMatches ? <KeyboardArrowDownIcon /> : <KeyboardArrowUpIcon />}
-          </IconButton>
+          <Tooltip title={showMatches ? "Ocultar Matches" : "Mostrar Matches"}>
+            <IconButton
+              onClick={handleShowMatches}
+              sx={{ color: 'white' }}
+            >
+              {showMatches ? <KeyboardArrowDownIcon /> : <KeyboardArrowUpIcon />}
+            </IconButton>
+          </Tooltip>
           {hasNewMatch && (
             <Box
               sx={{
@@ -454,7 +556,10 @@ const Game = () => {
                         alt={card.title}
                       />
                       <IconButton
-                        onClick={() => toggleHighlight(card.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleHighlight(card.id);
+                        }}
                         sx={{
                           position: 'absolute',
                           top: 8,
@@ -693,13 +798,14 @@ const Game = () => {
       </Modal>
 
       {/* Card Container */}
-      <Box
-        sx={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
+      <Container 
+        maxWidth="md" 
+        sx={{ 
+          flex: 1, 
+          display: 'flex', 
+          alignItems: 'center', 
           justifyContent: 'center',
-          padding: { xs: 1, sm: 2 },
+          py: 4,
           position: 'relative',
           overflow: 'hidden',
         }}
@@ -711,6 +817,7 @@ const Game = () => {
               style={{
                 position: 'absolute',
                 width: '100%',
+                maxWidth: isMobile ? '90%' : '500px',
                 height: '100%',
                 x,
                 rotate,
@@ -733,7 +840,10 @@ const Game = () => {
                   position: 'relative',
                   overflow: 'hidden',
                   borderRadius: 4,
-                  boxShadow: 3,
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
                   '&:hover': {
                     transform: 'scale(1.02)',
                     transition: 'transform 0.2s ease-in-out',
@@ -818,7 +928,7 @@ const Game = () => {
             </motion.div>
           )}
         </AnimatePresence>
-      </Box>
+      </Container>
 
       {/* Bottom Buttons */}
       <Paper
@@ -836,48 +946,60 @@ const Game = () => {
           zIndex: 2,
         }}
       >
-        <IconButton
-          onClick={() => navigate('/dashboard')}
-          sx={{
-            color: 'white',
-            background: 'rgba(255, 255, 255, 0.1)',
-            '&:hover': {
-              background: 'rgba(255, 255, 255, 0.2)',
-            },
-          }}
-        >
-          <ArrowBackIcon />
-        </IconButton>
+        <Tooltip title="Voltar ao Dashboard">
+          <IconButton
+            onClick={() => navigate('/dashboard')}
+            sx={{
+              color: 'white',
+              background: 'rgba(255, 255, 255, 0.1)',
+              '&:hover': {
+                background: 'rgba(255, 255, 255, 0.2)',
+              },
+            }}
+          >
+            <ArrowBackIcon />
+          </IconButton>
+        </Tooltip>
 
         <Box sx={{ display: 'flex', gap: 4 }}>
-          <IconButton
-            onClick={() => {
-              handleDragEnd(null, { velocity: { x: -500 } } as any);
-            }}
-            sx={{
-              color: 'white',
-              background: 'rgba(255, 255, 255, 0.1)',
-              '&:hover': {
-                background: 'rgba(255, 255, 255, 0.2)',
-              },
-            }}
-          >
-            <CloseIcon />
-          </IconButton>
-          <IconButton
-            onClick={() => {
-              handleDragEnd(null, { velocity: { x: 500 } } as any);
-            }}
-            sx={{
-              color: 'white',
-              background: 'rgba(255, 255, 255, 0.1)',
-              '&:hover': {
-                background: 'rgba(255, 255, 255, 0.2)',
-              },
-            }}
-          >
-            <FavoriteIcon />
-          </IconButton>
+          <Tooltip title="Pular">
+            <IconButton
+              onClick={() => {
+                handleDragEnd(null, { velocity: { x: -500 } } as any);
+              }}
+              sx={{
+                color: 'white',
+                background: 'rgba(255, 255, 255, 0.1)',
+                width: 56,
+                height: 56,
+                '&:hover': {
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  transform: 'scale(1.1)',
+                },
+              }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Curtir">
+            <IconButton
+              onClick={() => {
+                handleDragEnd(null, { velocity: { x: 500 } } as any);
+              }}
+              sx={{
+                color: 'white',
+                background: 'rgba(255, 255, 255, 0.1)',
+                width: 56,
+                height: 56,
+                '&:hover': {
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  transform: 'scale(1.1)',
+                },
+              }}
+            >
+              <FavoriteIcon />
+            </IconButton>
+          </Tooltip>
         </Box>
 
         <Box sx={{ width: 40 }} /> {/* Espaçador para manter o layout centralizado */}
