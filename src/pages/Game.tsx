@@ -15,11 +15,11 @@ import {
   Modal,
   Fade,
 } from '@mui/material';
-import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
+import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from 'framer-motion';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 import CloseIcon from '@mui/icons-material/Close';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CheckIcon from '@mui/icons-material/CheckCircle';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import LocalFireDepartmentIcon from '@mui/icons-material/LocalFireDepartment';
@@ -115,7 +115,7 @@ const Game = () => {
     return cards.filter(card => isMatch(card.id));
   };
 
-  const handleDragEnd = async (event: any, info: any) => {
+  const handleDragEnd = async (_: MouseEvent | TouchEvent | PointerEvent | null, info: PanInfo) => {
     const threshold = 100;
     const velocity = info.velocity.x;
     const offset = info.offset.x;
@@ -474,7 +474,7 @@ const Game = () => {
                           justifyContent: 'center',
                         }}
                       >
-                        <CheckCircleIcon sx={{ fontSize: 14, color: 'white' }} />
+                        <CheckIcon sx={{ fontSize: 14, color: 'white' }} />
                       </Box>
                     </Box>
                   </Paper>

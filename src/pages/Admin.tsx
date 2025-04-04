@@ -481,8 +481,15 @@ const Admin = () => {
         ) : (
           <Grid container spacing={2}>
             {cards.map((card) => (
-              <Grid key={card.id} item xs={12} sm={6} md={4}>
-                <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <Grid 
+                key={card.id} 
+                container
+                item 
+                xs={12} 
+                sm={6} 
+                md={4}
+              >
+                <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', width: '100%' }}>
                   <CardMedia
                     component="img"
                     height="200"
