@@ -112,17 +112,35 @@ const Dashboard = () => {
   // Gerar código aleatório
   const generateCode = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let code = '';
-    for (let i = 0; i < 6; i++) {
+    const prefix = 'SEX';
+    let code = prefix;
+    for (let i = 0; i < 4; i++) {
       code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return code;
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(userCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(userCode);
+      setCopied(true);
+      setSnackbar({
+        open: true,
+        message: 'Código copiado com sucesso!',
+        severity: 'success',
+      });
+      setTimeout(() => {
+        setCopied(false);
+        setSnackbar(prev => ({ ...prev, open: false }));
+      }, 2000);
+    } catch (error) {
+      console.error('Erro ao copiar código:', error);
+      setSnackbar({
+        open: true,
+        message: 'Erro ao copiar código',
+        severity: 'error',
+      });
+    }
   };
 
   const handleLogout = async () => {
@@ -425,50 +443,43 @@ const Dashboard = () => {
                 </Typography>
               </Box>
             ) : (
-              <List sx={{ p: 0 }}>
-                {partners.map((partner, index) => (
-                  <motion.div
+              <List sx={{ width: '100%', bgcolor: 'transparent' }}>
+                {partners.map((partner) => (
+                  <Paper
                     key={partner.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
+                    elevation={2}
+                    sx={{
+                      mb: 2,
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      backdropFilter: 'blur(10px)',
+                      borderRadius: 2,
+                      overflow: 'hidden',
+                      transition: 'all 0.3s ease',
+                      '&:hover': {
+                        transform: 'translateY(-2px)',
+                        boxShadow: '0 8px 16px rgba(0, 0, 0, 0.2)',
+                      }
+                    }}
                   >
                     <ListItem
-                      sx={{
-                        background: 'rgba(255, 255, 255, 0.03)',
-                        borderRadius: 2,
-                        mb: 2,
-                        transition: 'all 0.3s ease',
-                        '&:hover': {
-                          background: 'rgba(255, 255, 255, 0.06)',
-                          transform: 'translateX(8px)',
-                        },
-                      }}
                       secondaryAction={
-                        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                          <Button
-                            onClick={() => navigate(`/game/${partner.partnerId}`)}
-                            sx={{
-                              color: 'white',
-                              background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
-                              backdropFilter: 'blur(10px)',
-                              '&:hover': {
-                                background: 'linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.1) 100%)',
-                              },
-                            }}
-                          >
-                            Jogar
-                          </Button>
-                        </motion.div>
+                        <Chip
+                          label={partner.code}
+                          sx={{
+                            bgcolor: 'rgba(255, 68, 68, 0.2)',
+                            color: '#ff4444',
+                            border: '1px solid rgba(255, 68, 68, 0.3)',
+                            fontFamily: 'monospace',
+                            fontWeight: 'bold',
+                          }}
+                        />
                       }
                     >
                       <ListItemAvatar>
-                        <Avatar 
-                          sx={{ 
-                            bgcolor: 'transparent',
-                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                        <Avatar
+                          sx={{
+                            bgcolor: partner.online ? '#4CAF50' : '#ff4444',
                             fontSize: '1.5rem',
-                            background: 'rgba(255, 255, 255, 0.05)',
                           }}
                         >
                           {partner.avatar}
@@ -476,34 +487,18 @@ const Dashboard = () => {
                       </ListItemAvatar>
                       <ListItemText
                         primary={
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography sx={{ 
-                              color: 'white',
-                              fontWeight: 500,
-                            }}>
-                              {partner.name}
-                            </Typography>
-                            <Chip
-                              label={partner.online ? 'Online' : 'Offline'}
-                              size="small"
-                              sx={{
-                                background: partner.online 
-                                  ? 'linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.1) 100%)'
-                                  : 'rgba(255, 255, 255, 0.05)',
-                                color: 'white',
-                                borderRadius: '4px',
-                                height: '20px',
-                                '& .MuiChip-label': {
-                                  fontSize: '0.7rem',
-                                  fontWeight: 500,
-                                },
-                              }}
-                            />
-                          </Box>
+                          <Typography variant="h6" sx={{ color: 'white' }}>
+                            {partner.name}
+                          </Typography>
+                        }
+                        secondary={
+                          <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                            {partner.online ? 'Online' : 'Offline'}
+                          </Typography>
                         }
                       />
                     </ListItem>
-                  </motion.div>
+                  </Paper>
                 ))}
               </List>
             )}
@@ -512,48 +507,53 @@ const Dashboard = () => {
       </Box>
 
       {/* Dialog para adicionar parceiro */}
-      <Dialog 
-        open={openDialog} 
+      <Dialog
+        open={openDialog}
         onClose={() => setOpenDialog(false)}
         PaperProps={{
           sx: {
-            background: 'rgba(30, 30, 30, 0.9)',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            borderRadius: 2,
+            bgcolor: '#1a1a1a',
+            color: 'white',
+            minWidth: '400px',
           }
         }}
       >
-        <DialogTitle sx={{ color: 'white' }}>Adicionar Parceiro</DialogTitle>
-        <DialogContent>
+        <DialogTitle sx={{ borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+          Adicionar Novo Parceiro
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
           <TextField
             autoFocus
             margin="dense"
             label="Nome do Parceiro"
-            type="text"
             fullWidth
-            variant="outlined"
             value={newPartnerName}
             onChange={(e) => setNewPartnerName(e.target.value)}
             sx={{
-              mt: 2,
               '& .MuiOutlinedInput-root': {
                 color: 'white',
                 '& fieldset': {
-                  borderColor: 'rgba(255, 255, 255, 0.23)',
+                  borderColor: 'rgba(255, 255, 255, 0.3)',
+                },
+                '&:hover fieldset': {
+                  borderColor: '#ff4444',
+                },
+                '&.Mui-focused fieldset': {
+                  borderColor: '#ff4444',
                 },
               },
               '& .MuiInputLabel-root': {
                 color: 'rgba(255, 255, 255, 0.7)',
+                '&.Mui-focused': {
+                  color: '#ff4444',
+                },
               },
             }}
           />
           <TextField
             margin="dense"
             label="Código do Parceiro"
-            type="text"
             fullWidth
-            variant="outlined"
             value={newPartnerCode}
             onChange={(e) => setNewPartnerCode(e.target.value.toUpperCase())}
             sx={{
@@ -561,38 +561,54 @@ const Dashboard = () => {
               '& .MuiOutlinedInput-root': {
                 color: 'white',
                 '& fieldset': {
-                  borderColor: 'rgba(255, 255, 255, 0.23)',
+                  borderColor: 'rgba(255, 255, 255, 0.3)',
+                },
+                '&:hover fieldset': {
+                  borderColor: '#ff4444',
+                },
+                '&.Mui-focused fieldset': {
+                  borderColor: '#ff4444',
                 },
               },
               '& .MuiInputLabel-root': {
                 color: 'rgba(255, 255, 255, 0.7)',
+                '&.Mui-focused': {
+                  color: '#ff4444',
+                },
               },
             }}
           />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenDialog(false)} sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+        <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
+          <Button
+            onClick={() => setOpenDialog(false)}
+            sx={{ color: 'rgba(255, 255, 255, 0.7)' }}
+          >
             Cancelar
           </Button>
-          <Button onClick={handleAddPartner} variant="contained" sx={{ 
-            background: 'linear-gradient(45deg, #4285f4, #34a853)',
-            '&:hover': {
-              background: 'linear-gradient(45deg, #357abd, #2d8a46)',
-            },
-          }}>
+          <Button
+            onClick={handleAddPartner}
+            variant="contained"
+            sx={{
+              bgcolor: '#ff4444',
+              '&:hover': {
+                bgcolor: '#ff6b6b',
+              }
+            }}
+          >
             Adicionar
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Snackbar para mensagens */}
-      <Snackbar 
-        open={snackbar.open} 
-        autoHideDuration={6000} 
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
       >
-        <Alert 
-          onClose={() => setSnackbar({ ...snackbar, open: false })} 
+        <Alert
+          onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
           severity={snackbar.severity}
           sx={{ width: '100%' }}
         >
