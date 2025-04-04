@@ -87,33 +87,16 @@ const Dashboard = () => {
         
         if (!userDoc.exists()) {
           console.error('Documento do usuário não encontrado');
-          
-          // Tentar criar o documento do usuário
-          try {
-            console.log('Tentando criar documento do usuário...');
-            const newCode = generateCode();
-            await setDoc(userDocRef, {
-              name: currentUser.displayName || 'Usuário',
-              email: currentUser.email,
-              code: newCode,
-              createdAt: serverTimestamp(),
-              lastLogin: serverTimestamp(),
-            });
-            console.log('Documento do usuário criado com sucesso');
-            setUserCode(newCode);
-          } catch (createError) {
-            console.error('Erro ao criar documento do usuário:', createError);
-            setSnackbar({
-              open: true,
-              message: 'Erro ao criar dados do usuário. Por favor, faça login novamente.',
-              severity: 'error',
-            });
-            navigate('/login');
-            return;
-          }
-        } else {
-          setUserCode(userDoc.data().code);
+          setSnackbar({
+            open: true,
+            message: 'Erro ao carregar dados do usuário. Por favor, faça login novamente.',
+            severity: 'error',
+          });
+          navigate('/login');
+          return;
         }
+
+        setUserCode(userDoc.data().code);
 
         // Configurar listener em tempo real para parceiros
         const partnersCollection = collection(db, 'users', currentUser.uid, 'partners');

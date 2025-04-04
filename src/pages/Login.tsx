@@ -76,12 +76,15 @@ export const Login = () => {
       console.log('Login bem sucedido:', result.user.email);
       
       // Criar/atualizar documento do usuário
-      await createUserDocument(result.user);
+      console.log('Criando/atualizando documento do usuário...');
+      const success = await createUserDocument(result.user);
       
-      // Add a small delay to ensure Firebase state is properly updated
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 500);
+      if (!success) {
+        throw new Error('Falha ao criar documento do usuário');
+      }
+      
+      console.log('Documento do usuário criado/atualizado com sucesso, navegando para o dashboard...');
+      navigate('/dashboard');
     } catch (error: any) {
       console.error('Erro no login:', error);
       if (error.code === 'auth/popup-blocked') {
