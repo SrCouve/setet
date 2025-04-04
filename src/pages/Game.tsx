@@ -31,6 +31,7 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import LocalFireDepartmentIcon from '@mui/icons-material/LocalFireDepartment';
 import { collection, getDocs, doc, getDoc, updateDoc, arrayUnion, onSnapshot, setDoc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../firebase';
+import RefreshIcon from '@mui/icons-material/Refresh';
 
 interface CardData {
   id: string;
@@ -109,26 +110,6 @@ const Game = () => {
         });
       }
 
-      // Carregar dados do match
-      const matchDoc = await getDoc(doc(db, 'matches', `${auth.currentUser.uid}_${partnerId}`));
-      if (matchDoc.exists()) {
-        const matchData = matchDoc.data();
-        setLikedCards(matchData.likedCards || []);
-        setViewedCards(matchData.viewedCards || []);
-        setMatchedCards(matchData.matchedCards || []);
-      }
-
-      // Carregar dados do parceiro para matches
-      const partnerMatchDoc = await getDoc(doc(db, 'matches', `${partnerId}_${auth.currentUser.uid}`));
-      if (partnerMatchDoc.exists()) {
-        const partnerMatchData = partnerMatchDoc.data();
-        // Atualizar os matches com os dados do parceiro
-        setMatchedCards(prev => {
-          const allMatches = [...new Set([...prev, ...(partnerMatchData.matchedCards || [])])];
-          return allMatches;
-        });
-      }
-
       // Carregar todas as cartas disponíveis
       const cardsSnapshot = await getDocs(collection(db, 'cards'));
       const allCards = cardsSnapshot.docs.map(doc => ({
@@ -141,7 +122,48 @@ const Game = () => {
         return;
       }
 
-      setCards(allCards);
+      // Carregar dados do match
+      const matchDoc = await getDoc(doc(db, 'matches', `${auth.currentUser.uid}_${partnerId}`));
+      if (matchDoc.exists()) {
+        const matchData = matchDoc.data();
+        const savedViewedCards = matchData.viewedCards || [];
+        const savedLikedCards = matchData.likedCards || [];
+        const savedMatchedCards = matchData.matchedCards || [];
+
+        // Se todas as cartas foram vistas, mostrar mensagem
+        if (savedViewedCards.length >= allCards.length) {
+          setCards([]);
+          setCurrentCardIndex(0);
+          setViewedCards(savedViewedCards);
+          setLikedCards(savedLikedCards);
+          setMatchedCards(savedMatchedCards);
+          setError('Todas as cartas disponíveis já foram visualizadas. Aguarde novas cartas serem adicionadas.');
+          return;
+        }
+
+        // Filtrar cartas já vistas
+        const availableCards = allCards.filter(card => !savedViewedCards.includes(card.id));
+        
+        if (availableCards.length > 0) {
+          setCards(availableCards);
+          setCurrentCardIndex(0);
+        } else {
+          setCards([]);
+          setCurrentCardIndex(0);
+          setError('Todas as cartas disponíveis já foram visualizadas. Aguarde novas cartas serem adicionadas.');
+        }
+
+        setViewedCards(savedViewedCards);
+        setLikedCards(savedLikedCards);
+        setMatchedCards(savedMatchedCards);
+      } else {
+        // Nova sessão - inicializar com valores vazios
+        setCards(allCards);
+        setCurrentCardIndex(0);
+        setViewedCards([]);
+        setLikedCards([]);
+        setMatchedCards([]);
+      }
 
       // Configurar listener para likes do parceiro
       const unsubscribePartner = onSnapshot(doc(db, 'users', partnerId), (doc) => {
@@ -248,11 +270,11 @@ const Game = () => {
       // Avançar para a próxima carta
       setCurrentCardIndex(prev => prev + 1);
       
-      // Se todas as cartas foram vistas, recarregar
+      // Se todas as cartas foram vistas, mostrar mensagem
       if (currentCardIndex === cards.length - 1) {
-        setViewedCards([]);
+        setCards([]);
         setCurrentCardIndex(0);
-        await loadData();
+        setError('Todas as cartas disponíveis já foram visualizadas. Aguarde novas cartas serem adicionadas.');
       }
     } catch (error) {
       console.error('Erro ao processar ação:', error);
@@ -333,6 +355,50 @@ const Game = () => {
   };
 
   const currentCard = cards[currentCardIndex];
+
+  // Adicionar função para limpar o jogo
+  const handleClearGame = async () => {
+    if (!auth.currentUser || !partnerId) return;
+
+    try {
+      const matchDoc = doc(db, 'matches', `${auth.currentUser.uid}_${partnerId}`);
+      const partnerMatchDoc = doc(db, 'matches', `${partnerId}_${auth.currentUser.uid}`);
+      const userDoc = doc(db, 'users', auth.currentUser.uid);
+
+      // Limpar todos os dados em batch
+      const batch = writeBatch(db);
+      batch.update(matchDoc, {
+        viewedCards: [],
+        likedCards: [],
+        matchedCards: [],
+        lastPlayed: new Date().toISOString()
+      });
+      batch.update(partnerMatchDoc, {
+        matchedCards: []
+      });
+      batch.update(userDoc, {
+        likedCards: []
+      });
+
+      await batch.commit();
+
+      // Recarregar dados
+      await loadData();
+
+      setSnackbar({
+        open: true,
+        message: 'Jogo reiniciado com sucesso!',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Erro ao limpar jogo:', error);
+      setSnackbar({
+        open: true,
+        message: 'Erro ao limpar jogo. Tente novamente.',
+        severity: 'error'
+      });
+    }
+  };
 
   if (loading) {
     return (
@@ -458,6 +524,14 @@ const Game = () => {
           </Box>
 
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Tooltip title="Limpar Jogo">
+              <IconButton
+                onClick={handleClearGame}
+                sx={{ color: 'white' }}
+              >
+                <RefreshIcon />
+              </IconButton>
+            </Tooltip>
             <Tooltip title={showMatches ? "Ocultar Matches" : "Mostrar Matches"}>
               <IconButton
                 onClick={handleShowMatches}
@@ -695,6 +769,14 @@ const Game = () => {
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Tooltip title="Limpar Jogo">
+            <IconButton
+              onClick={handleClearGame}
+              sx={{ color: 'white' }}
+            >
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
           <Tooltip title={showMatches ? "Ocultar Matches" : "Mostrar Matches"}>
             <IconButton
               onClick={handleShowMatches}
