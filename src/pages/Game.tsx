@@ -97,10 +97,28 @@ const Game = () => {
           return;
         }
 
+        // Carregar cartas primeiro
+        const cardsCollection = collection(db, 'cards');
+        const cardsSnapshot = await getDocs(cardsCollection);
+        const cardsData = cardsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as CardData[];
+
+        if (cardsData.length === 0) {
+          setError('Não há cartas disponíveis no momento');
+          return;
+        }
+
         // Verificar se é uma nova solicitação
         const matchDoc = await getDoc(doc(db, 'matches', `${currentUser.uid}_${partnerId}`));
         const matchData = matchDoc.data();
         
+        let savedViewedCards: string[] = [];
+        let savedLikedCards: string[] = [];
+        let savedFireCards: string[] = [];
+        let savedMatchedCards: string[] = [];
+
         // Se for uma nova solicitação ou não houver dados de match, resetar o estado
         if (!matchData || !matchData.lastPlayed) {
           // Resetar todos os estados
@@ -117,12 +135,40 @@ const Game = () => {
             fireCards: [],
             matchedCards: []
           });
+
+          // Carregar todas as cartas disponíveis
+          setCards(cardsData);
+          if (cardsData.length > 0) {
+            setCurrentCardIndex(0);
+          }
         } else {
           // Carregar estados salvos
-          setViewedCards(matchData.viewedCards || []);
-          setLikedCards(matchData.likedCards || []);
-          setFireCards(matchData.fireCards || []);
-          setMatchedCards(matchData.matchedCards || []);
+          savedViewedCards = matchData.viewedCards || [];
+          savedLikedCards = matchData.likedCards || [];
+          savedFireCards = matchData.fireCards || [];
+          savedMatchedCards = matchData.matchedCards || [];
+
+          setViewedCards(savedViewedCards);
+          setLikedCards(savedLikedCards);
+          setFireCards(savedFireCards);
+          setMatchedCards(savedMatchedCards);
+
+          // Filtrar cartas já vistas apenas se houver cartas não vistas
+          const newCards = cardsData.filter(card => !savedViewedCards.includes(card.id));
+          if (newCards.length > 0) {
+            setCards(newCards);
+            setCurrentCardIndex(0);
+          } else {
+            // Se todas as cartas foram vistas, reiniciar o jogo com todas as cartas
+            setCards(cardsData);
+            setCurrentCardIndex(0);
+            // Limpar histórico de cartas vistas
+            setViewedCards([]);
+            await updateDoc(doc(db, 'matches', `${currentUser.uid}_${partnerId}`), {
+              viewedCards: [],
+              lastPlayed: new Date().toISOString()
+            });
+          }
         }
 
         // Carregar informações do parceiro
@@ -141,32 +187,11 @@ const Game = () => {
           likedCards: partnerData.likedCards || [],
           fireCards: partnerData.fireCards || [],
         });
-
-        // Carregar cartas
-        const cardsCollection = collection(db, 'cards');
-        const cardsSnapshot = await getDocs(cardsCollection);
-        const cardsData = cardsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as CardData[];
-
-        if (cardsData.length === 0) {
-          setError('Não há cartas disponíveis no momento');
-          return;
-        }
-
-        // Filtrar cartas já vistas
-        const newCards = cardsData.filter(card => !viewedCards.includes(card.id));
-        setCards(newCards);
-        
-        if (newCards.length > 0) {
-          setCurrentCardIndex(0);
-        }
         
         // Verificar matches iniciais
         const initialMatches = cardsData.filter(card => 
           partnerData.likedCards?.includes(card.id) && 
-          likedCards.includes(card.id)
+          savedLikedCards.includes(card.id)
         );
         
         if (initialMatches.length > 0) {
@@ -232,6 +257,32 @@ const Game = () => {
         await updateDoc(matchDoc, {
           viewedCards: newViewedCards
         });
+
+        // Se todas as cartas foram vistas, recarregar o jogo
+        if (currentCardIndex === cards.length - 1) {
+          try {
+            // Recarregar todas as cartas
+            const cardsCollection = collection(db, 'cards');
+            const cardsSnapshot = await getDocs(cardsCollection);
+            const allCards = cardsSnapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            })) as CardData[];
+
+            if (allCards.length > 0) {
+              // Limpar histórico de cartas vistas e recarregar todas as cartas
+              setViewedCards([]);
+              setCards(allCards);
+              setCurrentCardIndex(0);
+              await updateDoc(matchDoc, {
+                viewedCards: [],
+                lastPlayed: new Date().toISOString()
+              });
+            }
+          } catch (reloadError) {
+            console.error('Erro ao recarregar cartas:', reloadError);
+          }
+        }
       }
     } catch (error) {
       console.error('Erro ao salvar cartas vistas:', error);

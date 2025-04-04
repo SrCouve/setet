@@ -1,39 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Função para verificar se o usuário está autenticado
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-    
-    // Função para verificar se o usuário está acessando seus próprios dados
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-    
-    // Regras para a coleção de usuários
-    match /users/{userId} {
-      allow read: if true;  // Permitir leitura pública
-      allow write: if isOwner(userId);
-    }
-    
-    // Regras para a coleção de matches
-    match /matches/{matchId} {
-      allow read: if isAuthenticated();  // Permitir leitura para usuários autenticados
-      allow write: if isAuthenticated();  // Permitir escrita para usuários autenticados
-    }
-    
-    // Regras para a coleção de cartas
-    match /cards/{cardId} {
-      allow read: if true;  // Permitir leitura pública
-      allow write: if isAuthenticated();  // Permitir escrita para usuários autenticados
-    }
-    
-    // Regras para a coleção de solicitações
-    match /requests/{requestId} {
-      allow read: if isAuthenticated();  // Permitir leitura para usuários autenticados
-      allow create: if isAuthenticated();  // Permitir criação para usuários autenticados
-      allow update: if isAuthenticated();  // Permitir atualização para usuários autenticados
+    match /{document=**} {
+      allow read, write: if true;  // Temporarily allow all access for development
     }
   }
 } 
