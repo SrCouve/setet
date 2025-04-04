@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -41,12 +41,9 @@ interface Partner {
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const [copied, setCopied] = useState(false);
+  const [userCode, setUserCode] = useState<string>('');
   const [partners, setPartners] = useState<Partner[]>([]);
   const [loading, setLoading] = useState(true);
-  const [openDialog, setOpenDialog] = useState(false);
-  const [newPartnerName, setNewPartnerName] = useState('');
-  const [newPartnerCode, setNewPartnerCode] = useState('');
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -56,7 +53,37 @@ const Dashboard = () => {
     message: '',
     severity: 'info',
   });
-  const [userCode, setUserCode] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [partnerCode, setPartnerCode] = useState('');
+  const [openDialog, setOpenDialog] = useState(false);
+  const [newPartnerName, setNewPartnerName] = useState('');
+  const [newPartnerCode, setNewPartnerCode] = useState('');
+  const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminError, setAdminError] = useState('');
+  const [adminCards, setAdminCards] = useState<any[]>([]);
+  const [openCardDialog, setOpenCardDialog] = useState(false);
+  const [editingCard, setEditingCard] = useState<any>(null);
+  const [cardForm, setCardForm] = useState({
+    title: '',
+    description: '',
+    category: '',
+    image: '',
+  });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [adminSnackbar, setAdminSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error';
+  }>({
+    open: false,
+    message: '',
+    severity: 'success',
+  });
 
   // Gerar código aleatório
   const generateCode = () => {
