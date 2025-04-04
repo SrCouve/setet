@@ -25,7 +25,7 @@ import { ContentCopy as ContentCopyIcon, Check as CheckIcon, Add as AddIcon, Clo
 import LogoutIcon from '@mui/icons-material/Logout';
 import { motion } from 'framer-motion';
 import { auth, db } from '../firebase';
-import { collection, getDocs, doc, setDoc, getDoc, query, where, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, getDoc, query, where, writeBatch, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 
 interface Partner {
@@ -96,24 +96,28 @@ const Dashboard = () => {
           }
         }
 
-        // Carregar parceiros
-        try {
-          const partnersCollection = collection(db, 'users', currentUser.uid, 'partners');
-          const partnersSnapshot = await getDocs(partnersCollection);
-          const partnersData = partnersSnapshot.docs.map(doc => ({
+        // Configurar listener em tempo real para parceiros
+        const partnersCollection = collection(db, 'users', currentUser.uid, 'partners');
+        const unsubscribe = onSnapshot(partnersCollection, (snapshot) => {
+          const partnersData = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
           })) as Partner[];
-
+          
           setPartners(partnersData);
-        } catch (error) {
+          setLoading(false);
+        }, (error) => {
           console.error('Erro ao carregar parceiros:', error);
           setSnackbar({
             open: true,
             message: 'Erro ao carregar parceiros. Verifique sua conexão.',
             severity: 'error',
           });
-        }
+          setLoading(false);
+        });
+
+        // Limpar o listener quando o componente for desmontado
+        return () => unsubscribe();
       } catch (error) {
         console.error('Erro geral:', error);
         setSnackbar({
@@ -121,7 +125,6 @@ const Dashboard = () => {
           message: 'Ocorreu um erro. Tente novamente mais tarde.',
           severity: 'error',
         });
-      } finally {
         setLoading(false);
       }
     };
@@ -331,9 +334,6 @@ const Dashboard = () => {
       batch.update(partnerRef, { status: 'accepted' as const });
       batch.update(myRef, { status: 'accepted' as const });
       await batch.commit();
-
-      // Recarregar parceiros ao invés de atualizar o estado local
-      await reloadPartners();
 
       setSnackbar({
         open: true,
