@@ -12,12 +12,43 @@ import {
 import { alpha } from '@mui/material/styles';
 import { Google as GoogleIcon } from '@mui/icons-material';
 import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { auth } from '../firebase';
+import { auth, db } from '../firebase';
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+
+// Função para gerar código único
+const generateCode = () => {
+  return Math.random().toString(36).substring(2, 8).toUpperCase();
+};
 
 export const Login = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const createUserDocument = async (user: any) => {
+    try {
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (!userDoc.exists()) {
+        const newCode = generateCode();
+        await setDoc(doc(db, 'users', user.uid), {
+          name: user.displayName || 'Usuário',
+          email: user.email,
+          code: newCode,
+          createdAt: serverTimestamp(),
+          lastLogin: serverTimestamp(),
+        });
+        console.log('Documento do usuário criado com sucesso');
+      } else {
+        // Atualizar último login
+        await setDoc(doc(db, 'users', user.uid), {
+          lastLogin: serverTimestamp(),
+        }, { merge: true });
+      }
+    } catch (error) {
+      console.error('Erro ao criar/atualizar documento do usuário:', error);
+      throw error;
+    }
+  };
 
   const handleGoogleLogin = async () => {
     setLoading(true);
@@ -33,6 +64,10 @@ export const Login = () => {
       const result = await signInWithPopup(auth, provider);
       console.log('Login bem sucedido:', result.user.email);
       
+      // Criar/atualizar documento do usuário
+      await createUserDocument(result.user);
+      
+      // Add a small delay to ensure Firebase state is properly updated
       setTimeout(() => {
         navigate('/dashboard');
       }, 500);

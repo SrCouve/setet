@@ -72,48 +72,18 @@ const Dashboard = () => {
 
         // Obter o código do usuário atual
         const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-        if (userDoc.exists()) {
-          setUserCode(userDoc.data().code || generateCode());
-        } else {
-          // Criar um novo usuário se não existir
-          const newCode = generateCode();
-          try {
-            // Primeiro, verificar se já existe um usuário com este código
-            const codeQuery = query(collection(db, 'users'), where('code', '==', newCode));
-            const codeSnapshot = await getDocs(codeQuery);
-            
-            if (!codeSnapshot.empty) {
-              // Se o código já existe, gerar um novo
-              const retryCode = generateCode();
-              await setDoc(doc(db, 'users', currentUser.uid), {
-                name: currentUser.displayName || 'Usuário',
-                email: currentUser.email,
-                code: retryCode,
-                createdAt: serverTimestamp(),
-                lastLogin: serverTimestamp(),
-              });
-              setUserCode(retryCode);
-            } else {
-              // Se o código não existe, usar o código original
-              await setDoc(doc(db, 'users', currentUser.uid), {
-                name: currentUser.displayName || 'Usuário',
-                email: currentUser.email,
-                code: newCode,
-                createdAt: serverTimestamp(),
-                lastLogin: serverTimestamp(),
-              });
-              setUserCode(newCode);
-            }
-          } catch (error) {
-            console.error('Erro ao criar usuário:', error);
-            setSnackbar({
-              open: true,
-              message: 'Erro ao criar usuário. Tente novamente mais tarde.',
-              severity: 'error',
-            });
-            return;
-          }
+        if (!userDoc.exists()) {
+          console.error('Documento do usuário não encontrado');
+          setSnackbar({
+            open: true,
+            message: 'Erro ao carregar dados do usuário. Por favor, faça login novamente.',
+            severity: 'error',
+          });
+          navigate('/login');
+          return;
         }
+
+        setUserCode(userDoc.data().code);
 
         // Configurar listener em tempo real para parceiros
         const partnersCollection = collection(db, 'users', currentUser.uid, 'partners');
