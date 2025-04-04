@@ -29,7 +29,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import LocalFireDepartmentIcon from '@mui/icons-material/LocalFireDepartment';
-import { collection, getDocs, doc, getDoc, updateDoc, arrayUnion, onSnapshot, setDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, updateDoc, arrayUnion, onSnapshot, setDoc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 
 interface CardData {
@@ -110,7 +110,7 @@ const Game = () => {
           return;
         }
 
-        // Carregar informações do parceiro primeiro
+        // Carregar informações do parceiro
         const partnerDoc = await getDoc(doc(db, 'users', partnerId));
         if (!partnerDoc.exists()) {
           setError('Parceiro não encontrado');
@@ -118,16 +118,19 @@ const Game = () => {
         }
 
         const partnerData = partnerDoc.data();
+        const partnerLikedCards = partnerData.likedCards || [];
+        const partnerFireCards = partnerData.fireCards || [];
+
         setPartner({
           id: partnerId,
           name: partnerData.name || 'Parceiro',
           avatar: partnerData.avatar || '👤',
           online: true,
-          likedCards: partnerData.likedCards || [],
-          fireCards: partnerData.fireCards || [],
+          likedCards: partnerLikedCards,
+          fireCards: partnerFireCards,
         });
 
-        // Verificar se é uma nova solicitação
+        // Verificar se é uma nova sessão
         const matchDoc = await getDoc(doc(db, 'matches', `${currentUser.uid}_${partnerId}`));
         const matchData = matchDoc.data();
 
@@ -161,6 +164,24 @@ const Game = () => {
           setFireCards(savedFireCards);
           setMatchedCards(savedMatchedCards);
 
+          // Verificar matches existentes
+          const existingMatches = cardsData.filter(card => 
+            partnerLikedCards.includes(card.id) && 
+            savedLikedCards.includes(card.id) &&
+            !savedMatchedCards.includes(card.id)
+          );
+
+          if (existingMatches.length > 0) {
+            const newMatchedCards = [...savedMatchedCards, ...existingMatches.map(card => card.id)];
+            setMatchedCards(newMatchedCards);
+            setHasNewMatch(true);
+            
+            // Atualizar matchedCards no documento de match
+            await updateDoc(doc(db, 'matches', `${currentUser.uid}_${partnerId}`), {
+              matchedCards: newMatchedCards
+            });
+          }
+
           // Filtrar cartas já vistas
           const availableCards = cardsData.filter(card => !savedViewedCards.includes(card.id));
           
@@ -179,7 +200,7 @@ const Game = () => {
           }
         }
 
-        // Configurar listener para curtidas do parceiro
+        // Configurar listener para curtidas do parceiro e matches
         const unsubscribe = onSnapshot(doc(db, 'users', partnerId), (docSnapshot) => {
           const data = docSnapshot.data();
           if (data) {
@@ -203,7 +224,8 @@ const Game = () => {
               setHasNewMatch(true);
               
               // Atualizar matchedCards no documento de match
-              updateDoc(doc(db, 'matches', `${currentUser.uid}_${partnerId}`), {
+              const matchRef = doc(db, 'matches', `${currentUser.uid}_${partnerId}`);
+              updateDoc(matchRef, {
                 matchedCards: newMatchedCards
               });
 
@@ -233,91 +255,99 @@ const Game = () => {
     if (currentCardIndex >= cards.length) return;
     
     const currentCard = cards[currentCardIndex];
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
     
-    // Adicionar carta às já vistas
-    const newViewedCards = [...viewedCards, currentCard.id];
-    setViewedCards(newViewedCards);
-    
-    // Salvar cartas vistas no Firestore
     try {
-      const currentUser = auth.currentUser;
-      if (currentUser) {
-        const matchDoc = doc(db, 'matches', `${currentUser.uid}_${partnerId}`);
-        await updateDoc(matchDoc, {
+      const matchDoc = doc(db, 'matches', `${currentUser.uid}_${partnerId}`);
+      const userDoc = doc(db, 'users', currentUser.uid);
+      
+      // Adicionar carta às já vistas
+      const newViewedCards = [...viewedCards, currentCard.id];
+      setViewedCards(newViewedCards);
+      
+      if (action === 'like') {
+        const newLikedCards = [...likedCards, currentCard.id];
+        setLikedCards(newLikedCards);
+        
+        // Atualizar em batch para garantir consistência
+        const batch = writeBatch(db);
+        
+        // Atualizar likedCards no documento do usuário
+        batch.update(userDoc, {
+          likedCards: arrayUnion(currentCard.id)
+        });
+
+        // Atualizar likedCards e viewedCards no documento de match
+        batch.update(matchDoc, {
+          likedCards: arrayUnion(currentCard.id),
           viewedCards: newViewedCards
         });
 
-        // Se a ação for curtir, adicionar às cartas curtidas
-        if (action === 'like') {
-          const newLikedCards = [...likedCards, currentCard.id];
-          setLikedCards(newLikedCards);
+        await batch.commit();
+
+        // Verificar se é um match (após o commit do batch)
+        if (partner?.likedCards.includes(currentCard.id) && !matchedCards.includes(currentCard.id)) {
+          const newMatchedCards = [...matchedCards, currentCard.id];
+          setMatchedCards(newMatchedCards);
+          setHasNewMatch(true);
           
-          // Atualizar likedCards no documento do usuário
-          const userDoc = doc(db, 'users', currentUser.uid);
-          await updateDoc(userDoc, {
-            likedCards: arrayUnion(currentCard.id)
-          });
-
-          // Atualizar likedCards no documento de match
+          // Atualizar matchedCards
           await updateDoc(matchDoc, {
-            likedCards: arrayUnion(currentCard.id)
+            matchedCards: arrayUnion(currentCard.id)
           });
 
-          // Verificar se é um match
-          if (partner?.likedCards.includes(currentCard.id)) {
-            const newMatchedCards = [...matchedCards, currentCard.id];
-            setMatchedCards(newMatchedCards);
-            setHasNewMatch(true);
-            
-            // Atualizar matchedCards no documento de match
+          setSnackbar({
+            open: true,
+            message: `Novo match: ${currentCard.title}!`,
+            severity: 'success',
+          });
+        }
+      } else {
+        // Se for skip, apenas atualizar viewedCards
+        await updateDoc(matchDoc, {
+          viewedCards: newViewedCards
+        });
+      }
+
+      // Se todas as cartas foram vistas
+      if (currentCardIndex === cards.length - 1) {
+        try {
+          // Recarregar todas as cartas
+          const cardsCollection = collection(db, 'cards');
+          const cardsSnapshot = await getDocs(cardsCollection);
+          const allCards = cardsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as CardData[];
+
+          if (allCards.length > 0) {
+            // Limpar histórico de cartas vistas e recarregar todas as cartas
+            setViewedCards([]);
+            setCards(allCards);
+            setCurrentCardIndex(0);
             await updateDoc(matchDoc, {
-              matchedCards: arrayUnion(currentCard.id)
-            });
-
-            // Mostrar notificação de match
-            setSnackbar({
-              open: true,
-              message: `Novo match: ${currentCard.title}!`,
-              severity: 'success',
+              viewedCards: [],
+              lastPlayed: new Date().toISOString()
             });
           }
+        } catch (reloadError) {
+          console.error('Erro ao recarregar cartas:', reloadError);
         }
-
-        // Se todas as cartas foram vistas, recarregar o jogo
-        if (currentCardIndex === cards.length - 1) {
-          try {
-            // Recarregar todas as cartas
-            const cardsCollection = collection(db, 'cards');
-            const cardsSnapshot = await getDocs(cardsCollection);
-            const allCards = cardsSnapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            })) as CardData[];
-
-            if (allCards.length > 0) {
-              // Limpar histórico de cartas vistas e recarregar todas as cartas
-              const newViewedCards: string[] = [];
-              setViewedCards(newViewedCards);
-              setCards(allCards);
-              setCurrentCardIndex(0);
-              await updateDoc(matchDoc, {
-                viewedCards: newViewedCards,
-                lastPlayed: new Date().toISOString()
-              });
-            }
-          } catch (reloadError) {
-            console.error('Erro ao recarregar cartas:', reloadError);
-          }
-        }
+      } else {
+        // Avançar para a próxima carta com um pequeno delay para a animação
+        setTimeout(() => {
+          setCurrentCardIndex(currentCardIndex + 1);
+        }, 300);
       }
     } catch (error) {
       console.error('Erro ao processar ação:', error);
+      setSnackbar({
+        open: true,
+        message: 'Erro ao processar ação. Tente novamente.',
+        severity: 'error'
+      });
     }
-    
-    // Avançar para a próxima carta com um pequeno delay para a animação
-    setTimeout(() => {
-      setCurrentCardIndex(currentCardIndex + 1);
-    }, 300);
   };
 
   const handleDragStart = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
@@ -368,19 +398,23 @@ const Game = () => {
     const currentUser = auth.currentUser;
     if (!currentUser) return;
 
-    const newFireCards = fireCards.includes(cardId)
-      ? fireCards.filter(id => id !== cardId)
-      : [...fireCards, cardId];
-    
-    setFireCards(newFireCards);
-
     try {
       const matchDoc = doc(db, 'matches', `${currentUser.uid}_${partnerId}`);
+      const newFireCards = fireCards.includes(cardId)
+        ? fireCards.filter(id => id !== cardId)
+        : [...fireCards, cardId];
+      
+      setFireCards(newFireCards);
       await updateDoc(matchDoc, {
         fireCards: newFireCards
       });
     } catch (error) {
-      console.error('Erro ao salvar foguinho:', error);
+      console.error('Erro ao atualizar foguinho:', error);
+      setSnackbar({
+        open: true,
+        message: 'Erro ao atualizar foguinho. Tente novamente.',
+        severity: 'error'
+      });
     }
   };
 
@@ -955,7 +989,7 @@ const Game = () => {
                 >
                   <Tooltip title={fireCards.includes(selectedCard.id) ? "Remover Foguinho" : "Adicionar Foguinho"}>
                     <IconButton
-                      onClick={(e) => {
+                      onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                         e.stopPropagation();
                         handleToggleFire(selectedCard.id);
                       }}
@@ -1055,7 +1089,7 @@ const Game = () => {
                   >
                     <Tooltip title={fireCards.includes(currentCard.id) ? "Remover Foguinho" : "Adicionar Foguinho"}>
                       <IconButton
-                        onClick={(e) => {
+                        onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                           e.stopPropagation();
                           handleToggleFire(currentCard.id);
                         }}
