@@ -58,6 +58,17 @@ const Dashboard = () => {
   });
   const [userCode, setUserCode] = useState('');
 
+  // Gerar código aleatório
+  const generateCode = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const prefix = 'SEX';
+    let code = prefix;
+    for (let i = 0; i < 4; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  };
+
   // Carregar parceiros do Firestore
   useEffect(() => {
     const loadPartners = async () => {
@@ -71,19 +82,38 @@ const Dashboard = () => {
         }
 
         // Obter o código do usuário atual
-        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDoc = await getDoc(userDocRef);
+        
         if (!userDoc.exists()) {
           console.error('Documento do usuário não encontrado');
-          setSnackbar({
-            open: true,
-            message: 'Erro ao carregar dados do usuário. Por favor, faça login novamente.',
-            severity: 'error',
-          });
-          navigate('/login');
-          return;
+          
+          // Tentar criar o documento do usuário
+          try {
+            console.log('Tentando criar documento do usuário...');
+            const newCode = generateCode();
+            await setDoc(userDocRef, {
+              name: currentUser.displayName || 'Usuário',
+              email: currentUser.email,
+              code: newCode,
+              createdAt: serverTimestamp(),
+              lastLogin: serverTimestamp(),
+            });
+            console.log('Documento do usuário criado com sucesso');
+            setUserCode(newCode);
+          } catch (createError) {
+            console.error('Erro ao criar documento do usuário:', createError);
+            setSnackbar({
+              open: true,
+              message: 'Erro ao criar dados do usuário. Por favor, faça login novamente.',
+              severity: 'error',
+            });
+            navigate('/login');
+            return;
+          }
+        } else {
+          setUserCode(userDoc.data().code);
         }
-
-        setUserCode(userDoc.data().code);
 
         // Configurar listener em tempo real para parceiros
         const partnersCollection = collection(db, 'users', currentUser.uid, 'partners');

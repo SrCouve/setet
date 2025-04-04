@@ -27,23 +27,34 @@ export const Login = () => {
 
   const createUserDocument = async (user: any) => {
     try {
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      console.log('Verificando documento do usuário...');
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userDocRef);
+      
       if (!userDoc.exists()) {
+        console.log('Criando novo documento de usuário...');
         const newCode = generateCode();
-        await setDoc(doc(db, 'users', user.uid), {
+        
+        // Criar o documento do usuário
+        await setDoc(userDocRef, {
           name: user.displayName || 'Usuário',
           email: user.email,
           code: newCode,
           createdAt: serverTimestamp(),
           lastLogin: serverTimestamp(),
         });
+        
         console.log('Documento do usuário criado com sucesso');
       } else {
+        console.log('Atualizando documento do usuário existente...');
         // Atualizar último login
-        await setDoc(doc(db, 'users', user.uid), {
+        await setDoc(userDocRef, {
           lastLogin: serverTimestamp(),
         }, { merge: true });
+        console.log('Documento do usuário atualizado com sucesso');
       }
+      
+      return true;
     } catch (error) {
       console.error('Erro ao criar/atualizar documento do usuário:', error);
       throw error;
