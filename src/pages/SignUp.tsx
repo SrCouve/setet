@@ -16,6 +16,7 @@ import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import { uploadImage } from '../services/imageService';
 
 const SignUp = () => {
   const [name, setName] = useState('');
@@ -23,17 +24,31 @@ const SignUp = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
+    if (!file) return;
+
+    try {
+      setUploading(true);
+      // Primeiro, mostrar uma prévia da imagem
       const reader = new FileReader();
       reader.onloadend = () => {
         setProfileImage(reader.result as string);
       };
       reader.readAsDataURL(file);
+      
+      // Depois, fazer o upload para o Firebase Storage
+      const imageUrl = await uploadImage(file, 'avatars');
+      setProfileImage(imageUrl);
+    } catch (error) {
+      console.error('Erro ao fazer upload da imagem:', error);
+      // Em caso de erro, manter a prévia local
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -99,23 +114,16 @@ const SignUp = () => {
                   style={{ display: 'none' }}
                   ref={fileInputRef}
                   onChange={handleImageUpload}
+                  disabled={uploading}
                 />
-                <IconButton
-                  color="primary"
-                  sx={{
-                    position: 'absolute',
-                    bottom: 0,
-                    right: 0,
-                    bgcolor: 'background.paper',
-                    '&:hover': {
-                      bgcolor: 'primary.main',
-                      color: 'white',
-                    },
-                  }}
+                <Button
+                  variant="outlined"
                   onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  sx={{ mb: 2 }}
                 >
-                  <PhotoCamera />
-                </IconButton>
+                  {uploading ? 'Enviando...' : 'Escolher Foto'}
+                </Button>
               </motion.div>
               <Typography
                 variant="h4"

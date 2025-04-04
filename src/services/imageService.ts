@@ -1,23 +1,22 @@
-// Serviço para upload de imagens usando ImgBB
-const IMGBB_API_KEY = 'b9898541a32ed4f20c7b29ada1cb6d00'; // Substitua pela sua chave API do ImgBB
+import { storage } from '../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { auth } from '../firebase';
 
-export const uploadImage = async (file: File): Promise<string> => {
+export const uploadImage = async (file: File, path: string = 'avatars'): Promise<string> => {
   try {
-    const formData = new FormData();
-    formData.append('image', file);
-
-    const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
-      method: 'POST',
-      body: formData
-    });
-
-    const data = await response.json();
-
-    if (!data.success) {
-      throw new Error('Falha no upload da imagem');
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error('Usuário não autenticado');
     }
 
-    return data.data.url;
+    const timestamp = Date.now();
+    const fileName = `${user.uid}/${timestamp}_${file.name}`;
+    const storageRef = ref(storage, `${path}/${fileName}`);
+
+    const snapshot = await uploadBytes(storageRef, file);
+    const downloadURL = await getDownloadURL(snapshot.ref);
+
+    return downloadURL;
   } catch (error) {
     console.error('Erro ao fazer upload da imagem:', error);
     throw error;
