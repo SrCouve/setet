@@ -27,7 +27,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import AddIcon from '@mui/icons-material/Add';
 import { motion } from 'framer-motion';
 import { auth, db } from '../firebase';
-import { collection, addDoc, getDocs, doc, setDoc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, setDoc, getDoc, query, where, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 
 interface Partner {
@@ -66,39 +66,59 @@ const Dashboard = () => {
         const currentUser = auth.currentUser;
         if (!currentUser) {
           console.error('Usuário não autenticado');
+          navigate('/login');
           return;
         }
 
         // Obter o código do usuário atual
         const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
         if (userDoc.exists()) {
-          setUserCode(userDoc.data().code || 'SEX123');
+          setUserCode(userDoc.data().code || generateCode());
         } else {
           // Criar um novo usuário se não existir
           const newCode = generateCode();
-          await setDoc(doc(db, 'users', currentUser.uid), {
-            name: currentUser.displayName || 'Usuário',
-            email: currentUser.email,
-            code: newCode,
-            createdAt: new Date(),
-          });
-          setUserCode(newCode);
+          try {
+            await setDoc(doc(db, 'users', currentUser.uid), {
+              name: currentUser.displayName || 'Usuário',
+              email: currentUser.email,
+              code: newCode,
+              createdAt: new Date(),
+            });
+            setUserCode(newCode);
+          } catch (error) {
+            console.error('Erro ao criar usuário:', error);
+            setSnackbar({
+              open: true,
+              message: 'Erro ao criar usuário. Tente novamente mais tarde.',
+              severity: 'error',
+            });
+            return;
+          }
         }
 
         // Carregar parceiros
-        const partnersCollection = collection(db, 'users', currentUser.uid, 'partners');
-        const partnersSnapshot = await getDocs(partnersCollection);
-        const partnersData = partnersSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Partner[];
+        try {
+          const partnersCollection = collection(db, 'users', currentUser.uid, 'partners');
+          const partnersSnapshot = await getDocs(partnersCollection);
+          const partnersData = partnersSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as Partner[];
 
-        setPartners(partnersData);
+          setPartners(partnersData);
+        } catch (error) {
+          console.error('Erro ao carregar parceiros:', error);
+          setSnackbar({
+            open: true,
+            message: 'Erro ao carregar parceiros. Verifique sua conexão.',
+            severity: 'error',
+          });
+        }
       } catch (error) {
-        console.error('Erro ao carregar parceiros:', error);
+        console.error('Erro geral:', error);
         setSnackbar({
           open: true,
-          message: 'Erro ao carregar parceiros',
+          message: 'Ocorreu um erro. Tente novamente mais tarde.',
           severity: 'error',
         });
       } finally {
@@ -107,7 +127,7 @@ const Dashboard = () => {
     };
 
     loadPartners();
-  }, []);
+  }, [navigate]);
 
   // Gerar código aleatório
   const generateCode = () => {
@@ -173,22 +193,33 @@ const Dashboard = () => {
         return;
       }
 
-      // Verificar se o código existe
-      const usersCollection = collection(db, 'users');
-      const usersSnapshot = await getDocs(usersCollection);
-      let partnerFound = false;
-      let partnerId = '';
-
-      for (const userDoc of usersSnapshot.docs) {
-        const userData = userDoc.data();
-        if (userData.code === newPartnerCode) {
-          partnerFound = true;
-          partnerId = userDoc.id;
-          break;
-        }
+      // Verificar se está tentando adicionar o próprio código
+      if (newPartnerCode === userCode) {
+        setSnackbar({
+          open: true,
+          message: 'Você não pode adicionar seu próprio código',
+          severity: 'error',
+        });
+        return;
       }
 
-      if (!partnerFound) {
+      // Verificar se o parceiro já existe
+      const existingPartner = partners.find(p => p.code === newPartnerCode);
+      if (existingPartner) {
+        setSnackbar({
+          open: true,
+          message: 'Este parceiro já foi adicionado',
+          severity: 'error',
+        });
+        return;
+      }
+
+      // Buscar o usuário pelo código
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('code', '==', newPartnerCode));
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
         setSnackbar({
           open: true,
           message: 'Código de parceiro não encontrado',
@@ -197,8 +228,43 @@ const Dashboard = () => {
         return;
       }
 
-      // Adicionar parceiro
-      const partnerData = {
+      const partnerDoc = querySnapshot.docs[0];
+      const partnerId = partnerDoc.id;
+      const partnerData = partnerDoc.data();
+
+      // Verificar se já existe uma conexão bidirecional
+      const myPartnersRef = collection(db, 'users', currentUser.uid, 'partners');
+      const partnerPartnersRef = collection(db, 'users', partnerId, 'partners');
+
+      const batch = writeBatch(db);
+
+      // Adicionar parceiro para o usuário atual
+      const newPartnerRef = doc(myPartnersRef);
+      batch.set(newPartnerRef, {
+        name: newPartnerName,
+        avatar: '👤',
+        online: false,
+        code: newPartnerCode,
+        partnerId: partnerId,
+        createdAt: serverTimestamp(),
+      });
+
+      // Adicionar usuário atual como parceiro do outro usuário
+      const reversePartnerRef = doc(partnerPartnersRef);
+      batch.set(reversePartnerRef, {
+        name: currentUser.displayName || 'Usuário',
+        avatar: '👤',
+        online: true,
+        code: userCode,
+        partnerId: currentUser.uid,
+        createdAt: serverTimestamp(),
+      });
+
+      await batch.commit();
+
+      // Atualizar estado local
+      const newPartner = {
+        id: newPartnerRef.id,
         name: newPartnerName,
         avatar: '👤',
         online: false,
@@ -206,20 +272,7 @@ const Dashboard = () => {
         partnerId: partnerId,
       };
 
-      const partnersCollection = collection(db, 'users', currentUser.uid, 'partners');
-      await addDoc(partnersCollection, partnerData);
-
-      // Adicionar o usuário atual como parceiro do outro usuário
-      const partnerPartnersCollection = collection(db, 'users', partnerId, 'partners');
-      await addDoc(partnerPartnersCollection, {
-        name: currentUser.displayName || 'Usuário',
-        avatar: '👤',
-        online: true,
-        code: userCode,
-        partnerId: currentUser.uid,
-      });
-
-      setPartners([...partners, { id: Date.now().toString(), ...partnerData }]);
+      setPartners(prev => [...prev, newPartner]);
       setOpenDialog(false);
       setNewPartnerName('');
       setNewPartnerCode('');
@@ -232,7 +285,7 @@ const Dashboard = () => {
       console.error('Erro ao adicionar parceiro:', error);
       setSnackbar({
         open: true,
-        message: 'Erro ao adicionar parceiro',
+        message: 'Erro ao adicionar parceiro. Tente novamente mais tarde.',
         severity: 'error',
       });
     }
@@ -309,25 +362,15 @@ const Dashboard = () => {
           <Paper
             elevation={0}
             sx={{
-              background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
+              background: 'rgba(0, 0, 0, 0.6)',
               backdropFilter: 'blur(10px)',
               border: '1px solid rgba(255, 255, 255, 0.1)',
               p: { xs: 3, sm: 4 },
-              borderRadius: 4,
+              borderRadius: 2,
               position: 'relative',
               overflow: 'hidden',
             }}
           >
-            <Box
-              sx={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                height: '2px',
-                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)',
-              }}
-            />
             <Typography 
               variant="h6"
               sx={{ 
@@ -343,45 +386,42 @@ const Dashboard = () => {
             </Typography>
             <Box sx={{ 
               display: 'flex', 
-              gap: 2, 
               alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 2,
             }}>
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.2 }}
-                style={{ flex: 1 }}
+              <Typography
+                variant="h2"
+                sx={{
+                  fontFamily: 'monospace',
+                  fontWeight: 700,
+                  color: '#ff4444',
+                  letterSpacing: '0.2em',
+                  fontSize: { xs: '2rem', sm: '3rem' },
+                  textShadow: '0 0 20px rgba(255, 68, 68, 0.3)',
+                }}
               >
-                <Typography
-                  variant="h2"
-                  sx={{
-                    color: 'white',
-                    fontWeight: 700,
-                    letterSpacing: '0.1em',
-                    background: 'linear-gradient(90deg, #fff, rgba(255,255,255,0.8))',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                  }}
-                >
-                  {userCode}
-                </Typography>
-              </motion.div>
-              <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
-                <IconButton
-                  onClick={handleCopy}
-                  sx={{
-                    color: 'white',
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    backdropFilter: 'blur(10px)',
-                    transition: 'all 0.3s ease',
-                    '&:hover': {
-                      background: 'rgba(255, 255, 255, 0.2)',
-                    },
-                  }}
-                >
-                  {copied ? <CheckIcon /> : <ContentCopyIcon />}
-                </IconButton>
-              </motion.div>
+                {userCode}
+              </Typography>
+              <IconButton
+                onClick={handleCopy}
+                sx={{
+                  color: copied ? '#4CAF50' : '#ff4444',
+                  bgcolor: 'rgba(0, 0, 0, 0.3)',
+                  backdropFilter: 'blur(5px)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    bgcolor: 'rgba(0, 0, 0, 0.5)',
+                    transform: 'scale(1.1)',
+                  },
+                  '&:active': {
+                    transform: 'scale(0.95)',
+                  },
+                }}
+              >
+                {copied ? <CheckIcon /> : <ContentCopyIcon />}
+              </IconButton>
             </Box>
           </Paper>
         </motion.div>
