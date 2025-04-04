@@ -592,7 +592,7 @@ const Game = () => {
                             fontSize: '0.7rem',
                           }}
                         />
-                        {(fireCards.includes(card.id) || partner?.fireCards?.includes(card.id)) && (
+                        {partner?.fireCards?.includes(card.id) && partner?.likedCards?.includes(card.id) && (
                           <LocalFireDepartmentIcon sx={{ color: '#ff4444', fontSize: '1.2rem' }} />
                         )}
                       </Box>
@@ -829,7 +829,7 @@ const Game = () => {
                           fontSize: '0.7rem',
                         }}
                       />
-                      {(fireCards.includes(card.id) || partner?.fireCards?.includes(card.id)) && (
+                      {partner?.fireCards?.includes(card.id) && partner?.likedCards?.includes(card.id) && (
                         <LocalFireDepartmentIcon sx={{ color: '#ff4444', fontSize: '1.2rem' }} />
                       )}
                     </Box>
@@ -907,13 +907,18 @@ const Game = () => {
                 <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 3 }}>
                   {selectedCard.description}
                 </Typography>
-                <Chip
-                  label={selectedCard.category}
-                  sx={{
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    color: 'white',
-                  }}
-                />
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                  <Chip
+                    label={selectedCard.category}
+                    sx={{
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      color: 'white',
+                    }}
+                  />
+                  {partner?.fireCards?.includes(selectedCard.id) && partner?.likedCards?.includes(selectedCard.id) && (
+                    <LocalFireDepartmentIcon sx={{ color: '#ff4444', fontSize: '1.2rem' }} />
+                  )}
+                </Box>
                 <Box
                   sx={{
                     position: 'absolute',
