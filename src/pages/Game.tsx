@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -19,8 +19,10 @@ import {
   useMediaQuery,
   CircularProgress,
   Tooltip,
+  Snackbar,
+  Alert,
 } from '@mui/material';
-import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 import CloseIcon from '@mui/icons-material/Close';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -28,7 +30,7 @@ import CheckIcon from '@mui/icons-material/CheckCircle';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import LocalFireDepartmentIcon from '@mui/icons-material/LocalFireDepartment';
-import { collection, getDocs, doc, getDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, updateDoc, arrayUnion, arrayRemove, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 
 interface CardData {
@@ -53,20 +55,36 @@ const Game = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const [currentCardIndex, setCurrentCardIndex] = useState(0);
-  const [matchedCards, setMatchedCards] = useState<string[]>([]);
-  const [showMatches, setShowMatches] = useState(false);
-  const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
-  const [highlightedCards, setHighlightedCards] = useState<string[]>([]);
-  const [hasNewMatch, setHasNewMatch] = useState(false);
+  
+  // Estados
   const [cards, setCards] = useState<CardData[]>([]);
-  const [partner, setPartner] = useState<Partner | null>(null);
+  const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [viewedCards, setViewedCards] = useState<string[]>([]);
+  const [likedCards, setLikedCards] = useState<string[]>([]);
+  const [matchedCards, setMatchedCards] = useState<string[]>([]);
+  const [partner, setPartner] = useState<Partner | null>(null);
+  const [showMatches, setShowMatches] = useState(false);
+  const [hasNewMatch, setHasNewMatch] = useState(false);
   const [noMoreCards, setNoMoreCards] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error' | 'info';
+  }>({
+    open: false,
+    message: '',
+    severity: 'success',
+  });
+  
+  // Referências
+  const cardRef = useRef<HTMLDivElement>(null);
+  const dragStartX = useRef<number>(0);
+  const dragThreshold = 100;
 
-  // Carregar cartas do Firebase e resetar o índice
+  // Carregar dados iniciais
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -95,6 +113,34 @@ const Game = () => {
           likedCards: partnerData.likedCards || [],
         });
 
+        // Configurar listener em tempo real para as cartas que o parceiro curtiu
+        const unsubscribe = onSnapshot(doc(db, 'users', partnerId), (doc) => {
+          if (doc.exists()) {
+            const data = doc.data();
+            setPartner(prev => ({
+              ...prev!,
+              likedCards: data.likedCards || [],
+            }));
+            
+            // Verificar se há novos matches
+            const newMatches = cards.filter(card => 
+              data.likedCards?.includes(card.id) && 
+              likedCards.includes(card.id) && 
+              !matchedCards.includes(card.id)
+            );
+            
+            if (newMatches.length > 0) {
+              setMatchedCards(prev => [...prev, ...newMatches.map(card => card.id)]);
+              setHasNewMatch(true);
+              setSnackbar({
+                open: true,
+                message: `Novo match: ${newMatches[0].title}!`,
+                severity: 'success',
+              });
+            }
+          }
+        });
+
         // Carregar cartas
         const cardsCollection = collection(db, 'cards');
         const cardsSnapshot = await getDocs(cardsCollection);
@@ -109,15 +155,14 @@ const Game = () => {
           return;
         }
 
-        // Carregar cartas já vistas do usuário
+        // Carregar cartas já vistas e curtidas do usuário
         const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
         const userData = userDoc.data();
         const viewedCards = userData?.viewedCards || [];
-        setViewedCards(viewedCards);
-
-        // Carregar cartas que o usuário já curtiu
         const likedCards = userData?.likedCards || [];
-        setHighlightedCards(likedCards);
+        
+        setViewedCards(viewedCards);
+        setLikedCards(likedCards);
 
         // Filtrar cartas já vistas
         const newCards = cardsData.filter(card => !viewedCards.includes(card.id));
@@ -129,6 +174,20 @@ const Game = () => {
         } else {
           setCurrentCardIndex(0);
         }
+        
+        // Verificar matches iniciais
+        const initialMatches = newCards.filter(card => 
+          partnerData.likedCards?.includes(card.id) && 
+          likedCards.includes(card.id)
+        );
+        
+        if (initialMatches.length > 0) {
+          setMatchedCards(initialMatches.map(card => card.id));
+        }
+        
+        return () => {
+          unsubscribe();
+        };
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
         setError('Ocorreu um erro ao carregar os dados. Tente novamente mais tarde.');
@@ -140,79 +199,94 @@ const Game = () => {
     loadData();
   }, [partnerId]);
 
-  // Motion values for drag
-  const x = useMotionValue(0);
-  const cardWidth = isMobile ? 300 : 400; // Largura de cada card ajustada para responsividade
-  const gap = 16; // Espaço entre os cards
-  const leftLimit = cards.length > 1 ? -(cards.length - 1) * (cardWidth + gap) : 0;
-
-  const rotate = useTransform(x, [leftLimit, 0], [25, 0]);
-  const opacity = useTransform(x, [leftLimit / 2, 0], [0.5, 1]);
-
-  const isMatch = (cardId: string) => {
-    return partner?.likedCards.includes(cardId) || false;
-  };
-
-  const getMatches = () => {
-    return cards.filter(card => isMatch(card.id));
-  };
-
-  const handleDragEnd = async (_: MouseEvent | TouchEvent | PointerEvent | null, info: PanInfo) => {
-    const threshold = 100;
-    const velocity = info.velocity.x;
-    const offset = info.offset.x;
-
-    if (Math.abs(velocity) > 500 || Math.abs(offset) > threshold) {
-      const direction = velocity > 0 || offset > 0 ? 'right' : 'left';
+  // Funções de interação com cartas
+  const handleCardAction = async (action: 'like' | 'skip') => {
+    if (currentCardIndex >= cards.length) return;
+    
+    const currentCard = cards[currentCardIndex];
+    
+    // Adicionar carta às já vistas
+    const newViewedCards = [...viewedCards, currentCard.id];
+    setViewedCards(newViewedCards);
+    
+    // Salvar cartas vistas no Firestore
+    try {
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const userDoc = doc(db, 'users', currentUser.uid);
+        await updateDoc(userDoc, {
+          viewedCards: newViewedCards
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao salvar cartas vistas:', error);
+    }
+    
+    // Se a ação for curtir, adicionar às cartas curtidas
+    if (action === 'like') {
+      const newLikedCards = [...likedCards, currentCard.id];
+      setLikedCards(newLikedCards);
       
-      if (direction === 'right' && currentCardIndex < cards.length - 1) {
-        const currentCard = cards[currentCardIndex];
-        
-        // Adicionar carta às já vistas
-        const newViewedCards = [...viewedCards, currentCard.id];
-        setViewedCards(newViewedCards);
-        
-        // Salvar cartas vistas no Firestore
-        try {
-          const currentUser = auth.currentUser;
-          if (currentUser) {
-            const userDoc = doc(db, 'users', currentUser.uid);
-            await updateDoc(userDoc, {
-              viewedCards: newViewedCards
-            });
-          }
-        } catch (error) {
-          console.error('Erro ao salvar cartas vistas:', error);
+      // Salvar no Firestore
+      try {
+        const currentUser = auth.currentUser;
+        if (currentUser) {
+          const userDoc = doc(db, 'users', currentUser.uid);
+          await updateDoc(userDoc, {
+            likedCards: arrayUnion(currentCard.id)
+          });
         }
-        
-        // Verificar se é um match
-        const isNewMatch = isMatch(currentCard.id);
-        if (isNewMatch && !matchedCards.includes(currentCard.id)) {
-          setMatchedCards([...matchedCards, currentCard.id]);
-          setHasNewMatch(true);
-          
-          // Salvar no Firestore
-          try {
-            const currentUser = auth.currentUser;
-            if (currentUser) {
-              const userDoc = doc(db, 'users', currentUser.uid);
-              await updateDoc(userDoc, {
-                likedCards: arrayUnion(currentCard.id)
-              });
-            }
-          } catch (error) {
-            console.error('Erro ao salvar match:', error);
-          }
-        }
-        
-        setCurrentCardIndex(currentCardIndex + 1);
-        
-        // Verificar se é a última carta
-        if (currentCardIndex === cards.length - 2) {
-          setNoMoreCards(true);
-        }
-      } else if (direction === 'left' && currentCardIndex > 0) {
-        setCurrentCardIndex(currentCardIndex - 1);
+      } catch (error) {
+        console.error('Erro ao salvar curtida:', error);
+      }
+      
+      // Verificar se é um match
+      if (partner?.likedCards.includes(currentCard.id) && !matchedCards.includes(currentCard.id)) {
+        setMatchedCards([...matchedCards, currentCard.id]);
+        setHasNewMatch(true);
+        setSnackbar({
+          open: true,
+          message: `Novo match: ${currentCard.title}!`,
+          severity: 'success',
+        });
+      }
+    }
+    
+    // Avançar para a próxima carta
+    setCurrentCardIndex(currentCardIndex + 1);
+    
+    // Verificar se é a última carta
+    if (currentCardIndex === cards.length - 2) {
+      setNoMoreCards(true);
+    }
+  };
+
+  const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+    if (e.type === 'mousedown') {
+      dragStartX.current = (e as React.MouseEvent).clientX;
+    } else if (e.type === 'touchstart') {
+      dragStartX.current = (e as React.TouchEvent).touches[0].clientX;
+    }
+  };
+
+  const handleDragEnd = (e: React.MouseEvent | React.TouchEvent) => {
+    let endX = 0;
+    
+    if (e.type === 'mouseup') {
+      endX = (e as React.MouseEvent).clientX;
+    } else if (e.type === 'touchend') {
+      endX = (e as React.TouchEvent).changedTouches[0].clientX;
+    }
+    
+    const diff = endX - dragStartX.current;
+    
+    if (Math.abs(diff) > dragThreshold) {
+      if (diff > 0) {
+        // Arrastou para a direita (curtir)
+        handleCardAction('like');
+      } else {
+        // Arrastou para a esquerda (pular)
+        handleCardAction('skip');
       }
     }
   };
@@ -224,13 +298,13 @@ const Game = () => {
     try {
       const userDoc = doc(db, 'users', currentUser.uid);
       
-      if (highlightedCards.includes(cardId)) {
-        setHighlightedCards(highlightedCards.filter(id => id !== cardId));
+      if (likedCards.includes(cardId)) {
+        setLikedCards(likedCards.filter(id => id !== cardId));
         await updateDoc(userDoc, {
           likedCards: arrayRemove(cardId)
         });
       } else {
-        setHighlightedCards([...highlightedCards, cardId]);
+        setLikedCards([...likedCards, cardId]);
         await updateDoc(userDoc, {
           likedCards: arrayUnion(cardId)
         });
@@ -245,6 +319,13 @@ const Game = () => {
     if (hasNewMatch) {
       setHasNewMatch(false);
     }
+  };
+
+  const getMatches = () => {
+    return cards.filter(card => 
+      partner?.likedCards.includes(card.id) && 
+      likedCards.includes(card.id)
+    );
   };
 
   const currentCard = cards[currentCardIndex];
@@ -426,7 +507,7 @@ const Game = () => {
           </Typography>
         </Box>
 
-        <Box sx={{ position: 'relative' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <Tooltip title={showMatches ? "Ocultar Matches" : "Mostrar Matches"}>
             <IconButton
               onClick={handleShowMatches}
@@ -454,6 +535,7 @@ const Game = () => {
       {/* Matches Collapse */}
       <Collapse in={showMatches}>
         <Paper
+          elevation={0}
           sx={{
             background: 'rgba(255, 255, 255, 0.05)',
             backdropFilter: 'blur(10px)',
@@ -466,213 +548,93 @@ const Game = () => {
           <Typography variant="h6" sx={{ color: 'white', mb: 3 }}>
             Matches com {partner?.name}
           </Typography>
-          <motion.div 
-            drag="x"
-            dragConstraints={{ 
-              right: 0, 
-              left: getMatches().length <= 1 ? 0 : -((getMatches().length - 1) * 216)
-            }}
-            dragElastic={0.1}
-            dragTransition={{ bounceStiffness: 300, bounceDamping: 30 }}
-            style={{
+          <Box
+            sx={{
               display: 'flex',
-              gap: '16px',
-              cursor: 'grab',
-              width: '100%',
-              paddingBottom: '8px',
-              touchAction: 'pan-x',
-              userSelect: 'none',
-              WebkitUserSelect: 'none',
-              WebkitTouchCallout: 'none',
+              gap: 2,
+              overflowX: 'auto',
+              pb: 2,
+              '&::-webkit-scrollbar': {
+                height: 8,
+              },
+              '&::-webkit-scrollbar-track': {
+                background: 'rgba(255, 255, 255, 0.05)',
+                borderRadius: 4,
+              },
+              '&::-webkit-scrollbar-thumb': {
+                background: 'rgba(255, 255, 255, 0.2)',
+                borderRadius: 4,
+                '&:hover': {
+                  background: 'rgba(255, 255, 255, 0.3)',
+                },
+              },
             }}
-            whileTap={{ cursor: 'grabbing' }}
           >
-            <Box 
-              sx={{ 
-                display: 'flex',
-                gap: 2,
-                height: '200px',
-                '& > *': {
-                  flexShrink: 0,
-                },
-                '& img': {
-                  userSelect: 'none',
-                  WebkitUserSelect: 'none',
-                  WebkitUserDrag: 'none',
-                  WebkitTouchCallout: 'none',
-                  pointerEvents: 'none',
-                },
-              }}
-            >
-              {getMatches().map((card) => (
-                <motion.div
+            {getMatches().length > 0 ? (
+              getMatches().map((card) => (
+                <Card
                   key={card.id}
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  whileHover={{ scale: 1.05 }}
-                  transition={{ duration: 0.2 }}
-                  onClick={() => setSelectedCard(card)}
-                  style={{
-                    scrollSnapAlign: 'start',
-                  }}
-                >
-                  <Paper
-                    elevation={0}
-                    sx={{
-                      position: 'relative',
-                      overflow: 'hidden',
-                      aspectRatio: '1',
-                      width: { xs: '200px', sm: '100%' },
-                      flexShrink: { xs: 0, sm: 'unset' },
-                      background: 'rgba(255, 255, 255, 0.08)',
-                      backdropFilter: 'blur(10px)',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                      borderRadius: 2,
-                      cursor: 'pointer',
-                      '&:hover': {
-                        border: '1px solid rgba(255, 255, 255, 0.2)',
-                        '& .match-overlay': {
-                          opacity: 1,
-                        },
-                      },
-                    }}
-                  >
-                    <Box sx={{ position: 'relative', width: '100%', height: '100%', userSelect: 'none' }}>
-                      <CardMedia
-                        component="img"
-                        sx={{
-                          height: { xs: '250px', sm: '300px' },
-                          objectFit: 'cover',
-                          objectPosition: 'center center',
-                          filter: 'brightness(0.7)',
-                          width: '100%',
-                          userSelect: 'none',
-                          WebkitUserSelect: 'none',
-                          WebkitUserDrag: 'none',
-                          WebkitTouchCallout: 'none',
-                          pointerEvents: 'none',
-                        }}
-                        image={card.image}
-                        alt={card.title}
-                      />
-                      <IconButton
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleHighlight(card.id);
-                        }}
-                        sx={{
-                          position: 'absolute',
-                          top: 8,
-                          right: 8,
-                          color: highlightedCards.includes(card.id) ? '#ff4444' : 'rgba(255, 255, 255, 0.5)',
-                          background: 'rgba(0, 0, 0, 0.3)',
-                          backdropFilter: 'blur(4px)',
-                          '&:hover': {
-                            background: 'rgba(0, 0, 0, 0.4)',
-                          },
-                          zIndex: 2,
-                        }}
-                      >
-                        <LocalFireDepartmentIcon />
-                      </IconButton>
-                    </Box>
-                    <Box
-                      className="match-overlay"
-                      sx={{
-                        position: 'absolute',
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.5) 50%, transparent 100%)',
-                        p: 1.5,
-                        opacity: 0.8,
-                        transition: 'opacity 0.3s ease',
-                        userSelect: 'none',
-                        pointerEvents: 'none',
-                      }}
-                    >
-                      <Typography
-                        variant="subtitle2"
-                        sx={{
-                          color: 'white',
-                          fontWeight: 500,
-                          fontSize: '0.8rem',
-                          textAlign: 'center',
-                          textShadow: '0 2px 4px rgba(0,0,0,0.5)',
-                        }}
-                      >
-                        {card.title}
-                      </Typography>
-                    </Box>
-                    <Box
-                      sx={{
-                        position: 'absolute',
-                        top: 8,
-                        right: 8,
-                        display: 'flex',
-                        gap: 1,
-                      }}
-                    >
-                      {highlightedCards.includes(card.id) && (
-                        <Box
-                          sx={{
-                            width: 20,
-                            height: 20,
-                            borderRadius: '50%',
-                            background: 'rgba(0, 0, 0, 0.3)',
-                            backdropFilter: 'blur(4px)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <LocalFireDepartmentIcon sx={{ fontSize: 14, color: '#ff4444' }} />
-                        </Box>
-                      )}
-                      <Box
-                        sx={{
-                          width: 20,
-                          height: 20,
-                          borderRadius: '50%',
-                          background: 'rgba(255, 255, 255, 0.1)',
-                          backdropFilter: 'blur(5px)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <CheckIcon sx={{ fontSize: 14, color: 'white' }} />
-                      </Box>
-                    </Box>
-                  </Paper>
-                </motion.div>
-              ))}
-              {getMatches().length === 0 && (
-                <Box
+                  elevation={0}
                   sx={{
-                    gridColumn: '1 / -1',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: 2,
-                    p: 4,
+                    minWidth: 200,
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    backdropFilter: 'blur(10px)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: 2,
+                    cursor: 'pointer',
+                    transition: 'transform 0.2s ease-in-out',
+                    '&:hover': {
+                      transform: 'scale(1.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.2)',
+                    },
                   }}
+                  onClick={() => setSelectedCard(card)}
                 >
-                  <Typography 
-                    variant="body1" 
-                    sx={{ 
-                      color: 'rgba(255, 255, 255, 0.7)',
-                      textAlign: 'center',
+                  <CardMedia
+                    component="img"
+                    height={200}
+                    image={card.image}
+                    alt={card.title}
+                    sx={{
+                      objectFit: 'cover',
+                      filter: 'brightness(0.7)',
                     }}
-                  >
-                    Ainda não há matches.
-                    <br />
-                    Continue jogando para descobrir afinidades!
-                  </Typography>
-                </Box>
-              )}
-            </Box>
-          </motion.div>
+                  />
+                  <CardContent sx={{ p: 2 }}>
+                    <Typography variant="h6" sx={{ color: 'white', fontSize: '1rem', mb: 1 }}>
+                      {card.title}
+                    </Typography>
+                    <Chip
+                      label={card.category}
+                      size="small"
+                      sx={{
+                        background: 'rgba(255, 255, 255, 0.1)',
+                        color: 'white',
+                        fontSize: '0.7rem',
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+              ))
+            ) : (
+              <Box
+                sx={{
+                  width: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  py: 4,
+                }}
+              >
+                <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.7)', textAlign: 'center' }}>
+                  Ainda não há matches.
+                  <br />
+                  Continue jogando para descobrir afinidades!
+                </Typography>
+              </Box>
+            )}
+          </Box>
         </Paper>
       </Collapse>
 
@@ -708,89 +670,49 @@ const Game = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3 }}
               >
-                <Box sx={{ textAlign: 'center', mb: 4 }}>
-                  <Typography
-                    component="h3"
-                    sx={{
-                      color: 'white',
-                      fontWeight: 700,
-                      mb: 2,
-                      background: 'linear-gradient(90deg, #fff, rgba(255,255,255,0.8))',
-                      WebkitBackgroundClip: 'text',
-                      WebkitTextFillColor: 'transparent',
-                      fontSize: { xs: '2rem', sm: '2.5rem' },
-                      letterSpacing: '0.02em',
-                    }}
-                  >
-                    {selectedCard.title}
-                  </Typography>
-                  <Chip
-                    label={selectedCard.category}
-                    sx={{
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      color: 'white',
-                      fontSize: '0.9rem',
-                      px: 2,
-                      height: 32,
-                    }}
-                  />
-                </Box>
-
-                <div 
-                  style={{ 
-                    position: 'relative',
-                    textAlign: 'center',
-                    maxWidth: '500px',
-                    margin: '0 auto',
+                <CardMedia
+                  component="img"
+                  sx={{
+                    height: { xs: '200px', sm: '300px' },
+                    objectFit: 'cover',
+                    borderRadius: 1,
+                    mb: 3,
+                  }}
+                  image={selectedCard.image}
+                  alt={selectedCard.title}
+                />
+                <Typography variant="h5" sx={{ color: 'white', mb: 2 }}>
+                  {selectedCard.title}
+                </Typography>
+                <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 3 }}>
+                  {selectedCard.description}
+                </Typography>
+                <Chip
+                  label={selectedCard.category}
+                  sx={{
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    color: 'white',
+                  }}
+                />
+                <IconButton
+                  onClick={() => {
+                    toggleHighlight(selectedCard.id);
+                    setSelectedCard(null);
+                  }}
+                  sx={{
+                    position: 'absolute',
+                    top: 16,
+                    right: 16,
+                    color: likedCards.includes(selectedCard.id) ? '#ff4444' : 'rgba(255, 255, 255, 0.5)',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    backdropFilter: 'blur(4px)',
+                    '&:hover': {
+                      background: 'rgba(0, 0, 0, 0.4)',
+                    },
                   }}
                 >
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: -20,
-                      left: -10,
-                      fontSize: '4rem',
-                      color: 'rgba(255, 255, 255, 0.1)',
-                      fontFamily: 'serif',
-                      content: '"""',
-                    }}
-                  >
-                    "
-                  </div>
-                  <p
-                    style={{
-                      color: 'rgba(255, 255, 255, 0.9)',
-                      fontSize: '1.25rem',
-                      lineHeight: '1.8',
-                      letterSpacing: '0.02em',
-                      fontWeight: 300,
-                      padding: '16px 32px',
-                      fontStyle: 'italic',
-                      margin: 0,
-                    }}
-                  >
-                    {selectedCard.description}
-                  </p>
-                </div>
-
-                <Box sx={{ mt: 5, display: 'flex', justifyContent: 'center' }}>
-                  <IconButton
-                    onClick={() => setSelectedCard(null)}
-                    sx={{
-                      color: 'white',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      width: 48,
-                      height: 48,
-                      transition: 'all 0.3s ease',
-                      '&:hover': {
-                        background: 'rgba(255, 255, 255, 0.2)',
-                        transform: 'scale(1.1)',
-                      },
-                    }}
-                  >
-                    <CloseIcon sx={{ fontSize: 24 }} />
-                  </IconButton>
-                </Box>
+                  <LocalFireDepartmentIcon />
+                </IconButton>
               </motion.div>
             )}
           </Box>
@@ -814,25 +736,20 @@ const Game = () => {
           {currentCard && (
             <motion.div
               key={currentCard.id}
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
               style={{
                 position: 'absolute',
                 width: '100%',
                 maxWidth: isMobile ? '90%' : '500px',
                 height: '100%',
-                x,
-                rotate,
-                opacity,
               }}
-              drag="x"
-              dragConstraints={{ left: leftLimit, right: 0 }}
-              onDragEnd={handleDragEnd}
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.8, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              whileTap={{ cursor: 'grabbing' }}
             >
               <Card
+                ref={cardRef}
+                elevation={0}
                 sx={{
                   height: '100%',
                   display: 'flex',
@@ -844,11 +761,15 @@ const Game = () => {
                   background: 'rgba(255, 255, 255, 0.05)',
                   backdropFilter: 'blur(10px)',
                   border: '1px solid rgba(255, 255, 255, 0.1)',
-                  '&:hover': {
-                    transform: 'scale(1.02)',
-                    transition: 'transform 0.2s ease-in-out',
+                  cursor: 'grab',
+                  '&:active': {
+                    cursor: 'grabbing',
                   },
                 }}
+                onMouseDown={handleDragStart}
+                onMouseUp={handleDragEnd}
+                onTouchStart={handleDragStart}
+                onTouchEnd={handleDragEnd}
               >
                 <Box sx={{ position: 'relative' }}>
                   <CardMedia
@@ -869,7 +790,7 @@ const Game = () => {
                       position: 'absolute',
                       top: 8,
                       right: 8,
-                      color: highlightedCards.includes(currentCard.id) ? '#ff4444' : 'rgba(255, 255, 255, 0.5)',
+                      color: likedCards.includes(currentCard.id) ? '#ff4444' : 'rgba(255, 255, 255, 0.5)',
                       background: 'rgba(0, 0, 0, 0.3)',
                       backdropFilter: 'blur(4px)',
                       '&:hover': {
@@ -881,46 +802,18 @@ const Game = () => {
                     <LocalFireDepartmentIcon />
                   </IconButton>
                 </Box>
-                <CardContent 
-                  sx={{ 
-                    color: 'white',
-                    flex: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    p: { xs: 2, sm: 3 },
-                  }}
-                >
-                  <Box>
-                    <Typography 
-                      variant="h5" 
-                      gutterBottom
-                      sx={{
-                        fontSize: { xs: '1.25rem', sm: '1.5rem' },
-                        fontWeight: 600,
-                      }}
-                    >
-                      {currentCard.title}
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      sx={{ 
-                        mb: 2,
-                        color: 'rgba(255, 255, 255, 0.7)',
-                        fontSize: { xs: '0.875rem', sm: '1rem' },
-                        lineHeight: 1.6,
-                      }}
-                    >
-                      {currentCard.description}
-                    </Typography>
-                  </Box>
+                <CardContent sx={{ flexGrow: 1, p: 3 }}>
+                  <Typography variant="h5" sx={{ color: 'white', mb: 1 }}>
+                    {currentCard.title}
+                  </Typography>
+                  <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 2 }}>
+                    {currentCard.description}
+                  </Typography>
                   <Chip
                     label={currentCard.category}
-                    size="small"
                     sx={{
                       background: 'rgba(255, 255, 255, 0.1)',
                       color: 'white',
-                      alignSelf: 'flex-start',
                     }}
                   />
                 </CardContent>
@@ -930,7 +823,7 @@ const Game = () => {
         </AnimatePresence>
       </Container>
 
-      {/* Bottom Buttons */}
+      {/* Action Buttons */}
       <Paper
         elevation={0}
         sx={{
@@ -961,12 +854,10 @@ const Game = () => {
           </IconButton>
         </Tooltip>
 
-        <Box sx={{ display: 'flex', gap: 4 }}>
+        <Box sx={{ display: 'flex', gap: 2 }}>
           <Tooltip title="Pular">
             <IconButton
-              onClick={() => {
-                handleDragEnd(null, { velocity: { x: -500 } } as any);
-              }}
+              onClick={() => handleCardAction('skip')}
               sx={{
                 color: 'white',
                 background: 'rgba(255, 255, 255, 0.1)',
@@ -983,9 +874,7 @@ const Game = () => {
           </Tooltip>
           <Tooltip title="Curtir">
             <IconButton
-              onClick={() => {
-                handleDragEnd(null, { velocity: { x: 500 } } as any);
-              }}
+              onClick={() => handleCardAction('like')}
               sx={{
                 color: 'white',
                 background: 'rgba(255, 255, 255, 0.1)',
@@ -1004,6 +893,22 @@ const Game = () => {
 
         <Box sx={{ width: 40 }} /> {/* Espaçador para manter o layout centralizado */}
       </Paper>
+      
+      {/* Snackbar para notificações */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
