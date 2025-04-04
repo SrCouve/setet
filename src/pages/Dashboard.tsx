@@ -121,17 +121,6 @@ const Dashboard = () => {
     loadPartners();
   }, [navigate]);
 
-  // Gerar código aleatório
-  const generateCode = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    const prefix = 'SEX';
-    let code = prefix;
-    for (let i = 0; i < 4; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return code;
-  };
-
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(userCode);
