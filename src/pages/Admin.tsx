@@ -481,13 +481,16 @@ const Admin = () => {
         ) : (
           <Grid container spacing={2}>
             {cards.map((card) => (
-              <Grid 
+              <Box 
                 key={card.id} 
-                container
-                item 
-                xs={12} 
-                sm={6} 
-                md={4}
+                sx={{ 
+                  width: {
+                    xs: '100%',
+                    sm: '50%',
+                    md: '33.33%'
+                  },
+                  p: 1
+                }}
               >
                 <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', width: '100%' }}>
                   <CardMedia
@@ -531,7 +534,7 @@ const Admin = () => {
                     </Box>
                   </CardContent>
                 </Card>
-              </Grid>
+              </Box>
             ))}
           </Grid>
         )}
