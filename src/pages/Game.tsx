@@ -112,34 +112,6 @@ const Game = () => {
           likedCards: partnerData.likedCards || [],
         });
 
-        // Configurar listener em tempo real para as cartas que o parceiro curtiu
-        const unsubscribe = onSnapshot(doc(db, 'users', partnerId), (doc) => {
-          if (doc.exists()) {
-            const data = doc.data();
-            setPartner(prev => ({
-              ...prev!,
-              likedCards: data.likedCards || [],
-            }));
-            
-            // Verificar se há novos matches
-            const newMatches = cards.filter(card => 
-              data.likedCards?.includes(card.id) && 
-              likedCards.includes(card.id) && 
-              !matchedCards.includes(card.id)
-            );
-            
-            if (newMatches.length > 0) {
-              setMatchedCards(prev => [...prev, ...newMatches.map(card => card.id)]);
-              setHasNewMatch(true);
-              setSnackbar({
-                open: true,
-                message: `Novo match: ${newMatches[0].title}!`,
-                severity: 'success',
-              });
-            }
-          }
-        });
-
         // Carregar cartas
         const cardsCollection = collection(db, 'cards');
         const cardsSnapshot = await getDocs(cardsCollection);
@@ -192,6 +164,36 @@ const Game = () => {
         if (initialMatches.length > 0) {
           setMatchedCards(initialMatches.map(card => card.id));
         }
+
+        // Configurar listener em tempo real para as cartas que o parceiro curtiu
+        const unsubscribe = onSnapshot(doc(db, 'users', partnerId), (doc) => {
+          if (doc.exists()) {
+            const data = doc.data();
+            const partnerLikedCards = data.likedCards || [];
+            
+            setPartner(prev => ({
+              ...prev!,
+              likedCards: partnerLikedCards,
+            }));
+            
+            // Verificar se há novos matches
+            const newMatches = cards.filter(card => 
+              partnerLikedCards.includes(card.id) && 
+              likedCards.includes(card.id) && 
+              !matchedCards.includes(card.id)
+            );
+            
+            if (newMatches.length > 0) {
+              setMatchedCards(prev => [...prev, ...newMatches.map(card => card.id)]);
+              setHasNewMatch(true);
+              setSnackbar({
+                open: true,
+                message: `Novo match: ${newMatches[0].title}!`,
+                severity: 'success',
+              });
+            }
+          }
+        });
         
         return () => {
           unsubscribe();
@@ -250,7 +252,7 @@ const Game = () => {
       
       // Verificar se é um match
       if (partner?.likedCards.includes(currentCard.id) && !matchedCards.includes(currentCard.id)) {
-        setMatchedCards([...matchedCards, currentCard.id]);
+        setMatchedCards(prev => [...prev, currentCard.id]);
         setHasNewMatch(true);
         setSnackbar({
           open: true,
