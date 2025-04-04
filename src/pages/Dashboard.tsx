@@ -21,10 +21,8 @@ import {
   Alert,
   CircularProgress,
 } from '@mui/material';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import CheckIcon from '@mui/icons-material/Check';
+import { ContentCopy as ContentCopyIcon, Check as CheckIcon, Add as AddIcon } from '@mui/icons-material';
 import LogoutIcon from '@mui/icons-material/Logout';
-import AddIcon from '@mui/icons-material/Add';
 import { motion } from 'framer-motion';
 import { auth, db } from '../firebase';
 import { collection, addDoc, getDocs, doc, setDoc, getDoc, query, where, writeBatch, serverTimestamp } from 'firebase/firestore';
@@ -230,7 +228,6 @@ const Dashboard = () => {
 
       const partnerDoc = querySnapshot.docs[0];
       const partnerId = partnerDoc.id;
-      const partnerData = partnerDoc.data();
 
       // Verificar se já existe uma conexão bidirecional
       const myPartnersRef = collection(db, 'users', currentUser.uid, 'partners');
