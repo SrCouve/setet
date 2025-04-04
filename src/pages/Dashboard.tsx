@@ -13,7 +13,6 @@ import {
   Avatar,
   IconButton,
   Chip,
-  Divider,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -26,7 +25,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AddIcon from '@mui/icons-material/Add';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { auth, db } from '../firebase';
 import { collection, addDoc, getDocs, doc, setDoc, getDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
@@ -43,7 +42,6 @@ interface Partner {
 const Dashboard = () => {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
-  const [showAddPartner, setShowAddPartner] = useState(false);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);

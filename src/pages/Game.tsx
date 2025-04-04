@@ -14,9 +14,6 @@ import {
   Collapse,
   Modal,
   Fade,
-  CircularProgress,
-  Snackbar,
-  Alert,
 } from '@mui/material';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import FavoriteIcon from '@mui/icons-material/Favorite';
@@ -51,29 +48,17 @@ const Game = () => {
   const navigate = useNavigate();
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [matchedCards, setMatchedCards] = useState<string[]>([]);
-  const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
   const [showMatches, setShowMatches] = useState(false);
   const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
   const [highlightedCards, setHighlightedCards] = useState<string[]>([]);
   const [hasNewMatch, setHasNewMatch] = useState(false);
   const [cards, setCards] = useState<CardData[]>([]);
-  const [loading, setLoading] = useState(true);
   const [partner, setPartner] = useState<Partner | null>(null);
-  const [snackbar, setSnackbar] = useState<{
-    open: boolean;
-    message: string;
-    severity: 'success' | 'error' | 'info' | 'warning';
-  }>({
-    open: false,
-    message: '',
-    severity: 'info',
-  });
 
   // Carregar cartas do Firebase e resetar o índice
   useEffect(() => {
     const loadData = async () => {
       try {
-        setLoading(true);
         const currentUser = auth.currentUser;
         if (!currentUser || !partnerId) {
           console.error('Usuário não autenticado ou parceiro não especificado');
@@ -84,11 +69,6 @@ const Game = () => {
         const partnerDoc = await getDoc(doc(db, 'users', partnerId));
         if (!partnerDoc.exists()) {
           console.error('Parceiro não encontrado');
-          setSnackbar({
-            open: true,
-            message: 'Parceiro não encontrado',
-            severity: 'error',
-          });
           return;
         }
 
@@ -112,13 +92,6 @@ const Game = () => {
         setCurrentCardIndex(0); // Resetar o índice quando carregar novas cartas
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
-        setSnackbar({
-          open: true,
-          message: 'Erro ao carregar dados',
-          severity: 'error',
-        });
-      } finally {
-        setLoading(false);
       }
     };
 
@@ -127,7 +100,6 @@ const Game = () => {
 
   // Motion values for drag
   const x = useMotionValue(0);
-  const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 0;
   const cardWidth = 200; // Largura de cada card
   const gap = 16; // Espaço entre os cards
   const leftLimit = cards.length > 1 ? -(cards.length - 1) * (cardWidth + gap) : 0;
@@ -150,8 +122,7 @@ const Game = () => {
 
     if (Math.abs(velocity) > 500 || Math.abs(offset) > threshold) {
       const direction = velocity > 0 || offset > 0 ? 'right' : 'left';
-      setSwipeDirection(direction);
-
+      
       if (direction === 'right' && currentCardIndex < cards.length - 1) {
         const currentCard = cards[currentCardIndex];
         
@@ -180,8 +151,6 @@ const Game = () => {
         setCurrentCardIndex(currentCardIndex - 1);
       }
     }
-
-    setSwipeDirection(null);
   };
 
   const toggleHighlight = async (cardId: string) => {
@@ -206,11 +175,6 @@ const Game = () => {
       }
     } catch (error) {
       console.error('Erro ao atualizar destaque:', error);
-      setSnackbar({
-        open: true,
-        message: 'Erro ao atualizar destaque',
-        severity: 'error',
-      });
     }
   };
 
@@ -826,11 +790,7 @@ const Game = () => {
         <Box sx={{ display: 'flex', gap: 4 }}>
           <IconButton
             onClick={() => {
-              setSwipeDirection('left');
-              setTimeout(() => {
-                setCurrentCardIndex((prev) => prev + 1);
-                setSwipeDirection(null);
-              }, 300);
+              handleDragEnd(null, { velocity: { x: -500 } } as any);
             }}
             sx={{
               color: 'white',
@@ -844,12 +804,7 @@ const Game = () => {
           </IconButton>
           <IconButton
             onClick={() => {
-              setSwipeDirection('right');
-              setMatchedCards([...matchedCards, currentCard.id]);
-              setTimeout(() => {
-                setCurrentCardIndex((prev) => prev + 1);
-                setSwipeDirection(null);
-              }, 300);
+              handleDragEnd(null, { velocity: { x: 500 } } as any);
             }}
             sx={{
               color: 'white',

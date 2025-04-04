@@ -22,7 +22,6 @@ import {
   CircularProgress,
   Snackbar,
   Alert,
-  Input,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
@@ -480,14 +479,10 @@ const Admin = () => {
             </Button>
           </Box>
         ) : (
-          <Grid container spacing={3}>
+          <Grid container spacing={2}>
             {cards.map((card) => (
-              <Grid item xs={12} sm={6} md={4} key={card.id}>
-                <Card sx={{
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  backdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                }}>
+              <Grid key={card.id} item xs={12} sm={6} md={4}>
+                <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                   <CardMedia
                     component="img"
                     height="200"

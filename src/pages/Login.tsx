@@ -1,24 +1,21 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithPopup, signOut } from 'firebase/auth';
-import { auth, googleProvider } from '../firebase';
 import {
   Box,
   Button,
-  Container,
   Typography,
+  Container,
   Paper,
-  Alert,
   CircularProgress,
-  useTheme,
-  alpha
+  Alert,
 } from '@mui/material';
-import GoogleIcon from '@mui/icons-material/Google';
-import FavoriteIcon from '@mui/icons-material/Favorite';
+import { alpha } from '@mui/material/styles';
+import { Google as GoogleIcon } from '@mui/icons-material';
+import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { auth } from '../firebase';
 
 export const Login = () => {
   const navigate = useNavigate();
-  const theme = useTheme();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,20 +24,13 @@ export const Login = () => {
     setError(null);
     try {
       console.log('Iniciando processo de login com Google...');
-      const result = await signInWithPopup(auth, googleProvider);
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
       console.log('Login bem sucedido:', result.user.email);
       navigate('/dashboard');
-    } catch (error: any) {
-      console.error('Erro detalhado no login:', error);
-      if (error.code === 'auth/popup-blocked') {
-        setError('O popup de login foi bloqueado. Por favor, permita popups para este site.');
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        setError('O processo de login foi cancelado. Tente novamente.');
-      } else if (error.code === 'auth/unauthorized-domain') {
-        setError('Este domínio não está autorizado para login. Contate o administrador.');
-      } else {
-        setError(`Erro ao fazer login: ${error.message || 'Tente novamente.'}`);
-      }
+    } catch (error) {
+      console.error('Erro no login:', error);
+      setError('Erro ao fazer login com Google. Por favor, tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -155,7 +145,7 @@ export const Login = () => {
               },
             }}
           >
-            <FavoriteIcon 
+            <GoogleIcon 
               sx={{ 
                 fontSize: 60, 
                 color: '#ff4444',
