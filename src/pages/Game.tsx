@@ -129,17 +129,8 @@ const Game = () => {
         // Carregar cartas já vistas e curtidas do usuário
         const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
         const userData = userDoc.data();
-        let viewedCards = userData?.viewedCards || [];
+        const viewedCards = userData?.viewedCards || [];
         const likedCards = userData?.likedCards || [];
-        
-        // Se todas as cartas já foram vistas, resetar as cartas vistas
-        if (viewedCards.length >= cardsData.length) {
-          viewedCards = [];
-          // Atualizar no Firestore
-          await updateDoc(doc(db, 'users', currentUser.uid), {
-            viewedCards: []
-          });
-        }
         
         setViewedCards(viewedCards);
         setLikedCards(likedCards);
@@ -156,7 +147,7 @@ const Game = () => {
         }
         
         // Verificar matches iniciais
-        const initialMatches = newCards.filter(card => 
+        const initialMatches = cardsData.filter(card => 
           partnerData.likedCards?.includes(card.id) && 
           likedCards.includes(card.id)
         );
@@ -177,7 +168,7 @@ const Game = () => {
             }));
             
             // Verificar se há novos matches
-            const newMatches = cards.filter(card => 
+            const newMatches = cardsData.filter(card => 
               partnerLikedCards.includes(card.id) && 
               likedCards.includes(card.id) && 
               !matchedCards.includes(card.id)
@@ -422,48 +413,226 @@ const Game = () => {
           background: '#000000',
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'white',
-          p: 3,
+          position: 'relative',
+          overflow: 'hidden',
         }}
       >
+        {/* Header */}
         <Paper
+          elevation={0}
           sx={{
-            p: 4,
-            maxWidth: '500px',
-            width: '100%',
             background: 'rgba(255, 255, 255, 0.05)',
             backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            textAlign: 'center',
-            borderRadius: 2,
+            borderRadius: 0,
+            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+            padding: 2,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            position: 'relative',
+            zIndex: 2,
           }}
         >
-          <Typography variant="h5" sx={{ mb: 2 }}>
-            {noMoreCards ? 'Não há mais cartas novas!' : 'Carregando...'}
-          </Typography>
-          {noMoreCards && (
+          <Tooltip title="Voltar ao Dashboard">
+            <IconButton 
+              onClick={() => navigate('/dashboard')} 
+              sx={{ 
+                color: 'white',
+                '&:hover': {
+                  background: 'rgba(255, 255, 255, 0.1)',
+                },
+              }}
+            >
+              <ArrowBackIcon />
+            </IconButton>
+          </Tooltip>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Avatar sx={{ bgcolor: 'transparent', fontSize: '1.5rem' }}>
+              {partner?.avatar}
+            </Avatar>
+            <Typography variant="h6" sx={{ color: 'white' }}>
+              {partner?.name || 'Parceiro'}
+            </Typography>
+          </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Tooltip title={showMatches ? "Ocultar Matches" : "Mostrar Matches"}>
+              <IconButton
+                onClick={handleShowMatches}
+                sx={{ color: 'white' }}
+              >
+                {showMatches ? <KeyboardArrowDownIcon /> : <KeyboardArrowUpIcon />}
+              </IconButton>
+            </Tooltip>
+            {hasNewMatch && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 0,
+                  width: 8,
+                  height: 8,
+                  backgroundColor: '#ff4444',
+                  borderRadius: '50%',
+                }}
+              />
+            )}
+          </Box>
+        </Paper>
+
+        {/* Matches Collapse - Sempre visível quando não há cartas */}
+        <Collapse in={true}>
+          <Paper
+            elevation={0}
+            sx={{
+              background: 'rgba(255, 255, 255, 0.05)',
+              backdropFilter: 'blur(10px)',
+              borderRadius: 0,
+              borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+              padding: '16px',
+              overflow: 'hidden',
+            }}
+          >
+            <Typography variant="h6" sx={{ color: 'white', mb: 3 }}>
+              Matches com {partner?.name}
+            </Typography>
+            <Box
+              sx={{
+                display: 'flex',
+                gap: 2,
+                overflowX: 'auto',
+                pb: 2,
+                '&::-webkit-scrollbar': {
+                  height: 8,
+                },
+                '&::-webkit-scrollbar-track': {
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  borderRadius: 4,
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  borderRadius: 4,
+                  '&:hover': {
+                    background: 'rgba(255, 255, 255, 0.3)',
+                  },
+                },
+              }}
+            >
+              {getMatches().length > 0 ? (
+                getMatches().map((card) => (
+                  <Card
+                    key={card.id}
+                    elevation={0}
+                    sx={{
+                      minWidth: 200,
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      backdropFilter: 'blur(10px)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: 2,
+                      cursor: 'pointer',
+                      transition: 'transform 0.2s ease-in-out',
+                      '&:hover': {
+                        transform: 'scale(1.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                      },
+                    }}
+                    onClick={() => setSelectedCard(card)}
+                  >
+                    <CardMedia
+                      component="img"
+                      height={200}
+                      image={card.image}
+                      alt={card.title}
+                      sx={{
+                        objectFit: 'cover',
+                        filter: 'brightness(0.7)',
+                      }}
+                    />
+                    <CardContent sx={{ p: 2 }}>
+                      <Typography variant="h6" sx={{ color: 'white', fontSize: '1rem', mb: 1 }}>
+                        {card.title}
+                      </Typography>
+                      <Chip
+                        label={card.category}
+                        size="small"
+                        sx={{
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          color: 'white',
+                          fontSize: '0.7rem',
+                        }}
+                      />
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                <Box
+                  sx={{
+                    width: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    py: 4,
+                  }}
+                >
+                  <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.7)', textAlign: 'center' }}>
+                    Ainda não há matches.
+                    <br />
+                    Continue jogando para descobrir afinidades!
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          </Paper>
+        </Collapse>
+
+        {/* Mensagem de não há mais cartas */}
+        <Box
+          sx={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            p: 3,
+          }}
+        >
+          <Paper
+            sx={{
+              p: 4,
+              maxWidth: '500px',
+              width: '100%',
+              background: 'rgba(255, 255, 255, 0.05)',
+              backdropFilter: 'blur(10px)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              textAlign: 'center',
+              borderRadius: 2,
+            }}
+          >
+            <Typography variant="h5" sx={{ mb: 2, color: 'white' }}>
+              Não há mais cartas novas!
+            </Typography>
             <Typography variant="body1" sx={{ mb: 3, color: 'rgba(255, 255, 255, 0.7)' }}>
               Todas as cartas disponíveis já foram visualizadas.
               <br />
               Aguarde novas cartas serem adicionadas pelo administrador.
             </Typography>
-          )}
-          <Button
-            variant="contained"
-            onClick={() => navigate('/dashboard')}
-            sx={{
-              background: '#ff4444',
-              color: 'white',
-              '&:hover': {
-                background: '#ff6666',
-              },
-            }}
-          >
-            Voltar ao Dashboard
-          </Button>
-        </Paper>
+            <Button
+              variant="contained"
+              onClick={() => navigate('/dashboard')}
+              sx={{
+                background: '#ff4444',
+                color: 'white',
+                '&:hover': {
+                  background: '#ff6666',
+                },
+              }}
+            >
+              Voltar ao Dashboard
+            </Button>
+          </Paper>
+        </Box>
       </Box>
     );
   }
