@@ -268,47 +268,52 @@ const Dashboard = () => {
       // Criar solicitação de parceria
       const myPartnersRef = collection(db, 'users', currentUser.uid, 'partners');
 
-      const batch = writeBatch(db);
+      try {
+        // Adicionar solicitação para o usuário atual
+        const newPartnerRef = doc(myPartnersRef);
+        await setDoc(newPartnerRef, {
+          name: newPartnerName,
+          avatar: '👤',
+          online: false,
+          code: newPartnerCode,
+          partnerId: partnerId,
+          status: 'pending' as const,
+          requestedBy: currentUser.uid,
+          createdAt: serverTimestamp(),
+        });
 
-      // Adicionar solicitação para o usuário atual
-      const newPartnerRef = doc(myPartnersRef);
-      batch.set(newPartnerRef, {
-        name: newPartnerName,
-        avatar: '👤',
-        online: false,
-        code: newPartnerCode,
-        partnerId: partnerId,
-        status: 'pending' as const,
-        requestedBy: currentUser.uid,
-        createdAt: serverTimestamp(),
-      });
+        // Adicionar solicitação para o parceiro
+        const reversePartnerRef = doc(partnerPartnersRef);
+        await setDoc(reversePartnerRef, {
+          name: currentUser.displayName || 'Usuário',
+          avatar: '👤',
+          online: true,
+          code: userCode,
+          partnerId: currentUser.uid,
+          status: 'pending' as const,
+          requestedBy: currentUser.uid,
+          createdAt: serverTimestamp(),
+        });
 
-      // Adicionar solicitação para o parceiro
-      const reversePartnerRef = doc(partnerPartnersRef);
-      batch.set(reversePartnerRef, {
-        name: currentUser.displayName || 'Usuário',
-        avatar: '👤',
-        online: true,
-        code: userCode,
-        partnerId: currentUser.uid,
-        status: 'pending' as const,
-        requestedBy: currentUser.uid,
-        createdAt: serverTimestamp(),
-      });
+        // Recarregar parceiros ao invés de atualizar o estado local
+        await reloadPartners();
 
-      await batch.commit();
-
-      // Recarregar parceiros ao invés de atualizar o estado local
-      await reloadPartners();
-
-      setOpenDialog(false);
-      setNewPartnerName('');
-      setNewPartnerCode('');
-      setSnackbar({
-        open: true,
-        message: 'Solicitação de parceria enviada!',
-        severity: 'success',
-      });
+        setOpenDialog(false);
+        setNewPartnerName('');
+        setNewPartnerCode('');
+        setSnackbar({
+          open: true,
+          message: 'Solicitação de parceria enviada!',
+          severity: 'success',
+        });
+      } catch (error) {
+        console.error('Erro ao adicionar parceiro:', error);
+        setSnackbar({
+          open: true,
+          message: 'Erro ao adicionar parceiro. Tente novamente mais tarde.',
+          severity: 'error',
+        });
+      }
     } catch (error) {
       console.error('Erro ao adicionar parceiro:', error);
       setSnackbar({
