@@ -52,3 +52,9 @@ export default tseslint.config({
   },
 })
 ```
+
+# SexMatch
+
+Aplicativo para encontrar afinidades entre casais.
+
+Teste de autenticação do Git.
