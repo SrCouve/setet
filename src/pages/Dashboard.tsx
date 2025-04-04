@@ -206,11 +206,25 @@ const Dashboard = () => {
       // Verificar se o parceiro já existe
       const existingPartner = partners.find(p => p.code === newPartnerCode);
       if (existingPartner) {
-        setSnackbar({
-          open: true,
-          message: 'Este parceiro já foi adicionado',
-          severity: 'error',
-        });
+        if (existingPartner.status === 'rejected') {
+          setSnackbar({
+            open: true,
+            message: 'Este usuário rejeitou sua solicitação anteriormente',
+            severity: 'error',
+          });
+        } else if (existingPartner.status === 'pending') {
+          setSnackbar({
+            open: true,
+            message: 'Você já enviou uma solicitação para este usuário',
+            severity: 'info',
+          });
+        } else {
+          setSnackbar({
+            open: true,
+            message: 'Este parceiro já foi adicionado',
+            severity: 'error',
+          });
+        }
         return;
       }
 
@@ -231,9 +245,25 @@ const Dashboard = () => {
       const partnerDoc = querySnapshot.docs[0];
       const partnerId = partnerDoc.id;
 
+      // Verificar se já existe uma solicitação anterior rejeitada
+      const partnerPartnersRef = collection(db, 'users', partnerId, 'partners');
+      const existingRequestQuery = query(partnerPartnersRef, where('partnerId', '==', currentUser.uid));
+      const existingRequestSnapshot = await getDocs(existingRequestQuery);
+
+      if (!existingRequestSnapshot.empty) {
+        const existingRequest = existingRequestSnapshot.docs[0].data();
+        if (existingRequest.status === 'rejected') {
+          setSnackbar({
+            open: true,
+            message: 'Este usuário rejeitou sua solicitação anteriormente',
+            severity: 'error',
+          });
+          return;
+        }
+      }
+
       // Criar solicitação de parceria
       const myPartnersRef = collection(db, 'users', currentUser.uid, 'partners');
-      const partnerPartnersRef = collection(db, 'users', partnerId, 'partners');
 
       const batch = writeBatch(db);
 
@@ -336,14 +366,21 @@ const Dashboard = () => {
       if (!currentUser) return;
 
       const partnerRef = doc(db, 'users', currentUser.uid, 'partners', partnerId);
-      const myRef = doc(db, 'users', partnerId, 'partners', currentUser.uid);
+      const partner = partners.find(p => p.id === partnerId);
+      if (!partner) return;
+
+      const myRef = doc(db, 'users', partner.partnerId, 'partners', currentUser.uid);
 
       const batch = writeBatch(db);
-      batch.delete(partnerRef);
-      batch.delete(myRef);
+      batch.update(partnerRef, { status: 'rejected' as const });
+      batch.update(myRef, { status: 'rejected' as const });
       await batch.commit();
 
-      setPartners(prev => prev.filter(p => p.id !== partnerId));
+      setPartners(prev =>
+        prev.map(p =>
+          p.id === partnerId ? { ...p, status: 'rejected' as const } : p
+        )
+      );
 
       setSnackbar({
         open: true,
