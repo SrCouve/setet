@@ -64,7 +64,6 @@ const Game = () => {
   const [partner, setPartner] = useState<Partner | null>(null);
   const [showMatches, setShowMatches] = useState(false);
   const [hasNewMatch, setHasNewMatch] = useState(false);
-  const [noMoreCards, setNoMoreCards] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
@@ -122,7 +121,6 @@ const Game = () => {
 
         if (cardsData.length === 0) {
           setError('Não há cartas disponíveis no momento');
-          setNoMoreCards(true);
           return;
         }
 
@@ -141,7 +139,7 @@ const Game = () => {
         
         // Verificar se há cartas novas
         if (newCards.length === 0) {
-          setNoMoreCards(true);
+          // Não há mais cartas novas
         } else {
           setCurrentCardIndex(0);
         }
@@ -256,11 +254,6 @@ const Game = () => {
     // Avançar para a próxima carta com um pequeno delay para a animação
     setTimeout(() => {
       setCurrentCardIndex(currentCardIndex + 1);
-      
-      // Verificar se é a última carta
-      if (currentCardIndex === cards.length - 2) {
-        setNoMoreCards(true);
-      }
     }, 300);
   };
 
