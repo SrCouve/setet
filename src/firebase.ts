@@ -1,7 +1,7 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { getFirestore } from 'firebase/firestore';
-import { getAuth, GoogleAuthProvider, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -21,11 +21,6 @@ const app = initializeApp(firebaseConfig);
 console.log('Firebase App inicializado com sucesso');
 
 export const auth = getAuth(app);
-// Configure persistence to handle storage access issues
-setPersistence(auth, browserLocalPersistence).catch((error) => {
-  console.error('Erro ao configurar persistência:', error);
-});
-
 export const googleProvider = new GoogleAuthProvider();
 export const db = getFirestore(app);
 console.log('Firestore e Auth inicializados com sucesso');

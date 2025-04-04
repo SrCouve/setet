@@ -30,6 +30,7 @@ import ImageIcon from '@mui/icons-material/Image';
 import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, setDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
+import { uploadImage, getDefaultImageUrl } from '../services/imageService';
 
 interface CardData {
   id: string;
@@ -41,6 +42,12 @@ interface CardData {
 
 const ADMIN_PASSWORD = 'admin123';
 
+interface SnackbarState {
+  open: boolean;
+  message: string;
+  severity: 'success' | 'error' | 'warning';
+}
+
 const Admin = () => {
   const navigate = useNavigate();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -50,7 +57,11 @@ const Admin = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [editingCard, setEditingCard] = useState<CardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [snackbar, setSnackbar] = useState<SnackbarState>({
+    open: false,
+    message: '',
+    severity: 'success',
+  });
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -370,20 +381,22 @@ const Admin = () => {
 
     try {
       setUploading(true);
-      // Em vez de fazer upload, vamos usar uma URL de imagem padrão
-      const defaultImageUrl = 'https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3';
-      setFormData({ ...formData, image: defaultImageUrl });
+      const imageUrl = await uploadImage(file);
+      setFormData({ ...formData, image: imageUrl });
       setSnackbar({
         open: true,
-        message: 'Imagem definida com sucesso!',
+        message: 'Imagem enviada com sucesso!',
         severity: 'success',
       });
     } catch (error) {
-      console.error('Erro ao definir imagem:', error);
+      console.error('Erro ao enviar imagem:', error);
+      // Em caso de erro, usar uma imagem padrão
+      const defaultImageUrl = getDefaultImageUrl(formData.category);
+      setFormData({ ...formData, image: defaultImageUrl });
       setSnackbar({
         open: true,
-        message: 'Erro ao definir imagem',
-        severity: 'error',
+        message: 'Erro ao enviar imagem. Usando imagem padrão.',
+        severity: 'warning',
       });
     } finally {
       setUploading(false);
