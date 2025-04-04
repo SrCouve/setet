@@ -22,6 +22,7 @@ import {
   CircularProgress,
   Snackbar,
   Alert,
+  FormHelperText,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
@@ -40,12 +41,20 @@ interface CardData {
   image: string;
 }
 
-const ADMIN_PASSWORD = 'admin123';
+// Senha do admin - em produção, isso deve vir de uma variável de ambiente
+const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin123';
 
 interface SnackbarState {
   open: boolean;
   message: string;
   severity: 'success' | 'error' | 'warning';
+}
+
+interface FormErrors {
+  title?: string;
+  description?: string;
+  category?: string;
+  image?: string;
 }
 
 const Admin = () => {
@@ -57,6 +66,7 @@ const Admin = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [editingCard, setEditingCard] = useState<CardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [snackbar, setSnackbar] = useState<SnackbarState>({
     open: false,
     message: '',
@@ -249,7 +259,44 @@ const Admin = () => {
     });
   };
 
+  const validateForm = (): boolean => {
+    const errors: FormErrors = {};
+    let isValid = true;
+
+    if (!formData.title.trim()) {
+      errors.title = 'O título é obrigatório';
+      isValid = false;
+    }
+
+    if (!formData.description.trim()) {
+      errors.description = 'A descrição é obrigatória';
+      isValid = false;
+    }
+
+    if (!formData.category) {
+      errors.category = 'A categoria é obrigatória';
+      isValid = false;
+    }
+
+    if (!formData.image) {
+      errors.image = 'A imagem é obrigatória';
+      isValid = false;
+    }
+
+    setFormErrors(errors);
+    return isValid;
+  };
+
   const handleSubmit = async () => {
+    if (!validateForm()) {
+      setSnackbar({
+        open: true,
+        message: 'Por favor, preencha todos os campos obrigatórios',
+        severity: 'error',
+      });
+      return;
+    }
+
     try {
       if (editingCard) {
         // Atualizar carta existente
@@ -285,7 +332,9 @@ const Admin = () => {
       console.error('Erro ao salvar carta:', error);
       setSnackbar({
         open: true,
-        message: 'Erro ao salvar carta',
+        message: error instanceof Error 
+          ? `Erro ao salvar carta: ${error.message}`
+          : 'Erro ao salvar carta',
         severity: 'error',
       });
     }
@@ -379,10 +428,33 @@ const Admin = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    // Validar tipo de arquivo
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setSnackbar({
+        open: true,
+        message: 'Tipo de arquivo não suportado. Use JPEG, PNG, GIF ou WEBP.',
+        severity: 'error',
+      });
+      return;
+    }
+
+    // Validar tamanho do arquivo (máximo 5MB)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      setSnackbar({
+        open: true,
+        message: 'O arquivo é muito grande. O tamanho máximo é 5MB.',
+        severity: 'error',
+      });
+      return;
+    }
+
     try {
       setUploading(true);
       const imageUrl = await uploadImage(file);
       setFormData({ ...formData, image: imageUrl });
+      setFormErrors({ ...formErrors, image: undefined });
       setSnackbar({
         open: true,
         message: 'Imagem enviada com sucesso!',
@@ -390,7 +462,6 @@ const Admin = () => {
       });
     } catch (error) {
       console.error('Erro ao enviar imagem:', error);
-      // Em caso de erro, usar uma imagem padrão
       const defaultImageUrl = getDefaultImageUrl(formData.category);
       setFormData({ ...formData, image: defaultImageUrl });
       setSnackbar({
@@ -651,7 +722,12 @@ const Admin = () => {
               label="Título"
               fullWidth
               value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              onChange={(e) => {
+                setFormData({ ...formData, title: e.target.value });
+                setFormErrors({ ...formErrors, title: undefined });
+              }}
+              error={!!formErrors.title}
+              helperText={formErrors.title}
               sx={{
                 '& .MuiOutlinedInput-root': {
                   color: 'white',

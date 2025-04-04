@@ -13,39 +13,27 @@ service cloud.firestore {
     
     // Regras para a coleção de usuários
     match /users/{userId} {
-      allow read: if isAuthenticated();
+      allow read: if true;  // Permitir leitura pública
       allow write: if isOwner(userId);
     }
     
     // Regras para a coleção de matches
     match /matches/{matchId} {
-      allow read: if isAuthenticated() && (
-        matchId.matches(request.auth.uid + '_*') || 
-        matchId.matches('*_' + request.auth.uid)
-      );
-      allow write: if isAuthenticated() && (
-        matchId.matches(request.auth.uid + '_*') || 
-        matchId.matches('*_' + request.auth.uid)
-      );
+      allow read: if isAuthenticated();  // Permitir leitura para usuários autenticados
+      allow write: if isAuthenticated();  // Permitir escrita para usuários autenticados
     }
     
     // Regras para a coleção de cartas
     match /cards/{cardId} {
-      allow read: if isAuthenticated();
-      allow write: if false; // Apenas administradores podem modificar cartas
+      allow read: if true;  // Permitir leitura pública
+      allow write: if isAuthenticated();  // Permitir escrita para usuários autenticados
     }
     
     // Regras para a coleção de solicitações
     match /requests/{requestId} {
-      allow read: if isAuthenticated() && (
-        resource.data.fromUserId == request.auth.uid || 
-        resource.data.toUserId == request.auth.uid
-      );
-      allow create: if isAuthenticated() && request.resource.data.fromUserId == request.auth.uid;
-      allow update: if isAuthenticated() && (
-        resource.data.fromUserId == request.auth.uid || 
-        resource.data.toUserId == request.auth.uid
-      );
+      allow read: if isAuthenticated();  // Permitir leitura para usuários autenticados
+      allow create: if isAuthenticated();  // Permitir criação para usuários autenticados
+      allow update: if isAuthenticated();  // Permitir atualização para usuários autenticados
     }
   }
 } 
