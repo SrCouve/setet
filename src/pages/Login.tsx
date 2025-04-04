@@ -25,12 +25,26 @@ export const Login = () => {
     try {
       console.log('Iniciando processo de login com Google...');
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({
+        prompt: 'select_account',
+        auth_type: 'reauthenticate'
+      });
+      
       const result = await signInWithPopup(auth, provider);
       console.log('Login bem sucedido:', result.user.email);
-      navigate('/dashboard');
-    } catch (error) {
+      
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 500);
+    } catch (error: any) {
       console.error('Erro no login:', error);
-      setError('Erro ao fazer login com Google. Por favor, tente novamente.');
+      if (error.code === 'auth/popup-blocked') {
+        setError('O popup de login foi bloqueado. Por favor, permita popups para este site.');
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        setError('O popup de login foi fechado. Por favor, tente novamente.');
+      } else {
+        setError('Erro ao fazer login com Google. Por favor, tente novamente.');
+      }
     } finally {
       setLoading(false);
     }
